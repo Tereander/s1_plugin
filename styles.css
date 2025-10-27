@@ -1,0 +1,16 @@
+/* styles.css */
+.table-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0); /* Прозрачный фон */
+  transition: background 0.2s;
+}
+
+.table-resizer:hover {
+  background: rgba(0, 0, 0, 0.1); /* Легкий фон при наведении для визуальной обратной связи */
+  /* или background: #000000; для чёрной линии */
+}
