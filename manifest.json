@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SimpleOne Table Plugin",
-  "version": "1.2",
+  "version": "1.2.2",
   "description": "Позволяет исправить SimpleOne так как Сашка это может, а больше видимо некому",
   "permissions": ["activeTab"],
   "content_scripts": [

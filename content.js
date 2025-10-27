@@ -210,12 +210,45 @@ function makeTableResizable(table) {
                     cell.style.maxWidth = newWidth + 'px'; // Опционально
                 });
 
+                // --- НОВОЕ: Обновляем стили внутренних элементов для отмены обрезки ---
+                // Найдем все внутренние элементы, отвечающие за отображение содержимого в ячейках этого столбца
+                // Используем селектор, похожий на тот, что был в HTML (src-components-groupedTable-cellDescription-___styles-module__content___wrzOw)
+                // и его контейнер (src-components-groupedTable-cellDescription-___styles-module__container___u5dbD)
+                const allTargetRows = Array.from(table.querySelectorAll('tr')); // Все строки снова
+                const contentContainers = allTargetRows.flatMap(row => {
+                    const cells = row.querySelectorAll('th, td');
+                    const targetCell = cells[index];
+                    if (targetCell) {
+                        // Найдем div.content___wrzOw, затем div.container___u5dbD внутри него
+                        const contentDiv = targetCell.querySelector('.src-components-groupedTable-cellDescription-___styles-module__content___wrzOw');
+                        if (contentDiv) {
+                            const containerDiv = contentDiv.querySelector('.src-components-groupedTable-cellDescription-___styles-module__container___u5dbD');
+                            if (containerDiv) {
+                                return [containerDiv];
+                            }
+                        }
+                    }
+                    return [];
+                });
+
+                // Применяем стили к найденным контейнерам
+                contentContainers.forEach(container => {
+                    // Отменяем обрезку текста
+                    container.style.textOverflow = 'clip'; // или 'clip' или '' (пустая строка), чтобы отменить 'ellipsis'
+                    container.style.overflow = 'visible'; // или 'clip' или '' (пустая строка), чтобы отменить 'hidden'
+                    container.style.whiteSpace = 'normal'; // или 'nowrap' в зависимости от желаемого поведения, но 'normal' обычно лучше для полного отображения
+                    // container.style.maxWidth = newWidth + 'px'; // Опционально: можно ограничить ширину контейнера, но часто лучше оставить как есть
+                    // container.style.width = 'auto'; // Позволяем ему растягиваться
+                });
+
                 // Обновляем позицию ресайзера
                 updateResizerPosition();
             };
 
             const onMouseUp = () => {
                 console.log("[Resizer] Изменение ширины столбца", index, "завершено.");
+                // Здесь, при необходимости, можно вернуть исходные стили обрезки, но обычно этого не делают,
+                // чтобы текст оставался видимым.
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
             };
@@ -246,6 +279,15 @@ function enhanceAllTables() {
   // Альтернатива: Просто вызвать функции, они сами пройдут по всем таблицам
   // colorDueDateRows();
   // makeTableResizable();
+}
+
+// --- Функция для автообновления страницы ---
+function setupAutoRefresh(intervalMs) {
+  console.log(`[AutoRefresh] Установка автообновления каждые ${intervalMs} мс.`);
+  setInterval(() => {
+    console.log("[AutoRefresh] Обновление страницы по таймеру.");
+    location.reload();
+  }, intervalMs);
 }
 
 // --- Основной запуск ---
@@ -300,6 +342,14 @@ function init() {
     childList: true,
     subtree: true
   });
+
+  // Установка автообновления
+  const REFRESH_INTERVAL_MS = 1000 * 60 * 15; //
+  setupAutoRefresh(REFRESH_INTERVAL_MS);
+
+  // Если нужно автообновление каждую минуту, раскомментируй следующую строку и закомментируй предыдущую:
+  // const REFRESH_INTERVAL_MS = 60000; // 60000 мс = 1 минута
+  // setupAutoRefresh(REFRESH_INTERVAL_MS);
 }
 
 // Запускаем инициализацию
