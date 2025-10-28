@@ -160,9 +160,9 @@ function colorDueDateRows() {
         // 🔴 Прошло SLA
         console.log("[SLA Color] SLA просрочен, устанавливаем красный.");
         row.style.backgroundColor = '#ffebee'; // светло-красный
-      } else if (diffMinutes < 60) { // Менее 1 часа (исправлено)
-        // 🟡 Менее 1 часа до окончания SLA
-        console.log("[SLA Color] Менее 1 часа до SLA, устанавливаем жёлтый.");
+      } else if (diffMinutes < 60*24) { // Менее 1 суток
+        // 🟡 Менее 1 суток до окончания SLA
+        console.log("[SLA Color] Менее 1 суток до SLA, устанавливаем жёлтый.");
         row.style.backgroundColor = '#fff8e1'; // светло-жёлтый
       } else {
         // Сброс
