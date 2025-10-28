@@ -113,3 +113,22 @@
 .settings-actions .close-btn:hover {
   background-color: #da190b;
 }
+
+/* --- НОВОЕ: Стили для чекбокса настроек --- */
+#autoRefreshToggle {
+  /* Сбрасываем все возможные стили, которые могут скрывать или изменять чекбокс */
+  appearance: checkbox !important; /* Пытаемся вернуть стандартный вид */
+  -webkit-appearance: checkbox !important;
+  -moz-appearance: checkbox !important;
+  display: inline-block !important; /* Убедимся, что он отображается */
+  visibility: visible !important; /* Убедимся, что он видим */
+  opacity: 1 !important; /* Убедимся, что он не прозрачный */
+  position: static !important; /* Сброс позиционирования */
+  vertical-align: middle; /* Выравнивание по середине текста */
+  margin: 0 4px 0 0; /* Маленький отступ справа от чекбокса */
+  /* Можно добавить бордер, если стандартный вид не появляется */
+  /* border: 1px solid #000; */
+  /* width: 16px; */
+  /* height: 16px; */
+  /* background: white; */
+}

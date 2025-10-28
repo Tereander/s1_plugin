@@ -347,10 +347,12 @@ function setupSettingsUI() {
     popup.className = 'settings-popup';
     popup.style.display = 'none'; // Скрыто по умолчанию
 
+    // Обновлённый HTML для попапа
     popup.innerHTML = `
         <h3>Настройки плагина</h3>
         <div class="settings-field">
-            <label class="settings-label">
+            <!-- Явно указываем label для чекбокса -->
+            <label class="settings-label" for="autoRefreshToggle">
                 <input type="checkbox" id="autoRefreshToggle"> Включить автообновление
             </label>
         </div>
@@ -393,6 +395,7 @@ function setupSettingsUI() {
         // Обновляем значения в UI при открытии
         if (isPopupVisible) {
              loadSettings().then(() => {
+                 // Обновляем состояние чекбокса и инпута
                  document.getElementById('autoRefreshToggle').checked = currentSettings.enabled;
                  document.getElementById('refreshIntervalInput').value = currentSettings.intervalSeconds;
              });
