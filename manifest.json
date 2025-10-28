@@ -1,5 +1,5 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "SimpleOne Plugin by Terekhov",
   "version": "1.5.1",
   "description": "Позволяет кастомизировать S1 и его отдельные элементы",
