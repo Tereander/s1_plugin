@@ -3,6 +3,60 @@ const DATA_ENHANCED_COLOR = 'data-enhanced-color';
 // Помечаем таблицу как обработанную (для ресайзера)
 const DATA_ENHANCED_RESIZE = 'data-enhanced-resize';
 
+// --- Управление автообновлением ---
+let refreshIntervalId = null;
+let currentSettings = {
+    enabled: false,
+    intervalSeconds: 10 // по умолчанию 10 секунд
+};
+
+// --- Функция для загрузки настроек из chrome.storage ---
+function loadSettings() {
+    return new Promise((resolve) => {
+        chrome.storage.sync.get(['autoRefreshEnabled', 'autoRefreshInterval'], (result) => {
+            // Обновляем настройки из хранилища, используя значения по умолчанию, если их нет
+            currentSettings.enabled = result.autoRefreshEnabled ?? currentSettings.enabled;
+            currentSettings.intervalSeconds = result.autoRefreshInterval ?? currentSettings.intervalSeconds;
+            console.log('[Settings] Загружены настройки:', currentSettings);
+            resolve(currentSettings);
+        });
+    });
+}
+
+// --- Функция для сохранения настроек в chrome.storage ---
+function saveSettings(settings) {
+    return new Promise((resolve) => {
+        chrome.storage.sync.set({
+            autoRefreshEnabled: settings.enabled,
+            autoRefreshInterval: settings.intervalSeconds
+        }, () => {
+            console.log('[Settings] Сохранены настройки:', settings);
+            resolve();
+        });
+    });
+}
+
+// --- Функция для управления автообновлением ---
+async function toggleAutoRefresh() {
+    await loadSettings(); // Убедимся, что у нас последние настройки
+    if (currentSettings.enabled) {
+        if (refreshIntervalId) {
+            clearInterval(refreshIntervalId);
+        }
+        console.log(`[AutoRefresh] Включение автообновления каждые ${currentSettings.intervalSeconds} секунд.`);
+        refreshIntervalId = setInterval(() => {
+            console.log("[AutoRefresh] Обновление страницы по таймеру.");
+            location.reload();
+        }, currentSettings.intervalSeconds * 1000); // Переводим секунды в миллисекунды
+    } else {
+        console.log('[AutoRefresh] Отключение автообновления.');
+        if (refreshIntervalId) {
+            clearInterval(refreshIntervalId);
+            refreshIntervalId = null;
+        }
+    }
+}
+
 // --- Функция для раскраски строк SLA (возвращение к оригинальному подходу) ---
 function colorDueDateRows() {
   // Используем оригинальный селектор таблиц
@@ -281,18 +335,132 @@ function enhanceAllTables() {
   // makeTableResizable();
 }
 
-// --- Функция для автообновления страницы ---
-function setupAutoRefresh(intervalMs) {
-  console.log(`[AutoRefresh] Установка автообновления каждые ${intervalMs} мс.`);
-  setInterval(() => {
-    console.log("[AutoRefresh] Обновление страницы по таймеру.");
-    location.reload();
-  }, intervalMs);
+// --- Функция для создания и управления попапом настроек ---
+function setupSettingsUI() {
+    // Создаём оверлей
+    const overlay = document.createElement('div');
+    overlay.className = 'settings-overlay';
+    overlay.style.display = 'none'; // Скрыто по умолчанию
+
+    // Создаём попап
+    const popup = document.createElement('div');
+    popup.className = 'settings-popup';
+    popup.style.display = 'none'; // Скрыто по умолчанию
+
+    popup.innerHTML = `
+        <h3>Настройки плагина</h3>
+        <div class="settings-field">
+            <label class="settings-label">
+                <input type="checkbox" id="autoRefreshToggle"> Включить автообновление
+            </label>
+        </div>
+        <div class="settings-field">
+            <label class="settings-label" for="refreshIntervalInput">Интервал обновления (секунды):</label>
+            <input type="number" id="refreshIntervalInput" class="settings-input" min="1" value="${currentSettings.intervalSeconds}">
+        </div>
+        <div class="settings-actions">
+            <button type="button" class="save-btn" id="saveSettingsBtn">Сохранить</button>
+            <button type="button" class="close-btn" id="closePopupBtn">Закрыть</button>
+        </div>
+    `;
+
+    // Создаём кнопку "Показать/Скрыть" настроек
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'settings-controls';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.textContent = '⚙️ Настройки';
+    toggleBtn.className = 'settings-btn';
+    // toggleBtn.classList.add('active'); // Не добавляем активный класс сразу
+
+    controlsDiv.appendChild(toggleBtn);
+
+    // Добавляем элементы в DOM
+    document.body.appendChild(overlay);
+    document.body.appendChild(popup);
+    document.body.appendChild(controlsDiv);
+
+    // --- Обработчики событий для попапа ---
+
+    // Кнопка "Показать/Скрыть"
+    let isPopupVisible = false;
+    toggleBtn.addEventListener('click', () => {
+        isPopupVisible = !isPopupVisible;
+        popup.style.display = isPopupVisible ? 'block' : 'none';
+        overlay.style.display = isPopupVisible ? 'block' : 'none';
+        // toggleBtn.classList.toggle('active', isPopupVisible);
+
+        // Обновляем значения в UI при открытии
+        if (isPopupVisible) {
+             loadSettings().then(() => {
+                 document.getElementById('autoRefreshToggle').checked = currentSettings.enabled;
+                 document.getElementById('refreshIntervalInput').value = currentSettings.intervalSeconds;
+             });
+        }
+    });
+
+    // Кнопка "Закрыть" попапа (и оверлея)
+    document.getElementById('closePopupBtn').addEventListener('click', () => {
+        isPopupVisible = false;
+        popup.style.display = 'none';
+        overlay.style.display = 'none';
+        // toggleBtn.classList.remove('active');
+    });
+
+    // Оверлей (закрытие при клике вне попапа)
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            isPopupVisible = false;
+            popup.style.display = 'none';
+            overlay.style.display = 'none';
+            // toggleBtn.classList.remove('active');
+        }
+    });
+
+    // Кнопка "Сохранить"
+    document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+        const enabled = document.getElementById('autoRefreshToggle').checked;
+        let intervalSeconds = parseInt(document.getElementById('refreshIntervalInput').value, 10);
+
+        // Валидация: убедимся, что интервал не меньше 1
+        if (isNaN(intervalSeconds) || intervalSeconds < 1) {
+            alert('Интервал обновления должен быть не менее 1 секунды.');
+            return;
+        }
+
+        // Обновляем настройки
+        currentSettings.enabled = enabled;
+        currentSettings.intervalSeconds = intervalSeconds;
+
+        // Сохраняем в хранилище
+        await saveSettings(currentSettings);
+
+        // Применяем настройки
+        toggleAutoRefresh();
+
+        // Закрываем попап
+        isPopupVisible = false;
+        popup.style.display = 'none';
+        overlay.style.display = 'none';
+        // toggleBtn.classList.remove('active');
+
+        console.log('[Settings] Настройки сохранены и применены:', currentSettings);
+    });
 }
 
 // --- Основной запуск ---
-function init() {
+async function init() {
   console.log("[Main] Инициализация плагина...");
+
+  // Загружаем настройки
+  await loadSettings();
+
+  // Инициализируем UI настроек
+  setupSettingsUI();
+
+  // Применяем настройки (включаем/выключаем автообновление)
+  toggleAutoRefresh();
+
   // Сначала попробуем сразу
   enhanceAllTables();
 
@@ -342,14 +510,6 @@ function init() {
     childList: true,
     subtree: true
   });
-
-  // Установка автообновления
-  const REFRESH_INTERVAL_MS = 1000 * 60 * 15; //
-  setupAutoRefresh(REFRESH_INTERVAL_MS);
-
-  // Если нужно автообновление каждую минуту, раскомментируй следующую строку и закомментируй предыдущую:
-  // const REFRESH_INTERVAL_MS = 60000; // 60000 мс = 1 минута
-  // setupAutoRefresh(REFRESH_INTERVAL_MS);
 }
 
 // Запускаем инициализацию

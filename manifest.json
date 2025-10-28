@@ -1,14 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "SimpleOne Table Plugin",
-  "version": "1.2.2",
+  "name": "SimpleOne Plugin by Terekhov",
+  "version": "1.3.0",
   "description": "Позволяет исправить SimpleOne так как Сашка это может, а больше видимо некому",
-  "permissions": ["activeTab"],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
   "content_scripts": [
     {
       "matches": ["https://sd.jet.su/list/*"],
       "js": ["content.js"],
       "css": ["styles.css"]
     }
-  ]
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
 }
