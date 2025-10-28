@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
   "name": "SimpleOne Plugin by Terekhov",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "Позволяет кастомизировать S1 и его отдельные элементы",
   "permissions": [
     "activeTab",
     "storage"
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Настройки плагина"
+  },
   "content_scripts": [
     {
       "matches": ["https://sd.jet.su/list/*"],

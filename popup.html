@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 15px;
+      font-family: Arial, sans-serif;
+    }
+    .settings-field {
+      margin-bottom: 15px;
+    }
+    .settings-label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: bold;
+    }
+    .settings-input {
+      width: 100%;
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .settings-actions {
+      text-align: right;
+    }
+    .save-btn {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .save-btn:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <h3>Настройки плагина</h3>
+  <div class="settings-field">
+    <label class="settings-label">
+      <input type="checkbox" id="autoRefreshToggle"> Включить автообновление
+    </label>
+  </div>
+  <div class="settings-field">
+    <label class="settings-label" for="refreshIntervalInput">Интервал обновления (секунды):</label>
+    <input type="number" id="refreshIntervalInput" class="settings-input" min="1" value="10">
+  </div>
+  <div class="settings-actions">
+    <button type="button" class="save-btn" id="saveSettingsBtn">Сохранить</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
