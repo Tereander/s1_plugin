@@ -57,7 +57,7 @@ async function toggleAutoRefresh() {
     }
 }
 
-// --- Функция для раскраски строк SLA (возвращение к оригинальному подходу) ---
+// --- Функция для раскраски строк SLA (обновлённый подход) ---
 function colorDueDateRows() {
   // Используем оригинальный селектор таблиц
   const tables = document.querySelectorAll('table');
@@ -71,19 +71,28 @@ function colorDueDateRows() {
         return;
     }
 
-    // 1. Найдём индекс столбца "Плановая дата/время окончания в BMC"
-    let targetIndex = -1;
+    // 1. Найдём индексы столбцов "Плановая дата/время окончания" и "Плановая дата/время окончания в BMC"
+    let targetIndexPrimary = -1; // 'planned_end_datetime'
+    let targetIndexFallback = -1; // 'c_bmc_planned_end_datetime'
+
     const headerCells = table.querySelectorAll('thead th, thead td');
     headerCells.forEach((th, index) => {
       const text = th.textContent.trim();
+      if (text === 'Плановая дата/время окончания') {
+        targetIndexPrimary = index;
+        console.log("[SLA Color] Найден индекс основного столбца SLA:", targetIndexPrimary);
+      }
       if (text === 'Плановая дата/время окончания в BMC') {
-        targetIndex = index;
-        console.log("[SLA Color] Найден индекс столбца SLA:", targetIndex);
+        targetIndexFallback = index;
+        console.log("[SLA Color] Найден индекс резервного столбца SLA:", targetIndexFallback);
       }
     });
 
+    // Приоритет у основного столбца, если его нет - используем резервный
+    let targetIndex = targetIndexPrimary !== -1 ? targetIndexPrimary : targetIndexFallback;
+
     if (targetIndex === -1) {
-        console.log("[SLA Color] Столбец 'Плановая дата/время окончания в BMC' не найден в таблице, пропускаем.");
+        console.log("[SLA Color] Ни один из столбцов SLA не найден в таблице, пропускаем.");
         return;
     }
 
@@ -111,11 +120,35 @@ function colorDueDateRows() {
           return;
       }
 
-      const text = textElement.textContent.trim();
-      console.log("[SLA Color] Текст даты из ячейки:", text);
+      let text = textElement.textContent.trim();
+      console.log("[SLA Color] Текст даты из ячейки (основной столбец):", text);
 
-      if (!text || text === '(не задано)') {
-        console.log("[SLA Color] Дата не задана, сбрасываем стиль строки.");
+      // Если основной столбец пуст или 'none', проверяем резервный столбец, если он есть и отличается от основного
+      if ((!text || text === '(не задано)' || text.toLowerCase() === 'none') && targetIndexFallback !== -1 && targetIndexFallback !== targetIndexPrimary) {
+          console.log("[SLA Color] Основной столбец пуст, проверяем резервный столбец BMC.");
+          const fallbackCell = cells[targetIndexFallback];
+          if (fallbackCell) {
+              let fallbackTextElement = fallbackCell.querySelector('span:not(.src-components-groupedTable-___styles-module__NotSet___qnmCN)');
+              if (!fallbackTextElement) {
+                  fallbackTextElement = fallbackCell.querySelector('div, span');
+              }
+              if (fallbackTextElement) {
+                  text = fallbackTextElement.textContent.trim();
+                  console.log("[SLA Color] Текст даты из резервной ячейки BMC:", text);
+              } else {
+                  console.log("[SLA Color] Элемент с датой не найден в резервной ячейке BMC, сбрасываем стиль строки.");
+                  row.style.backgroundColor = '';
+                  return;
+              }
+          } else {
+              console.log("[SLA Color] Резервная ячейка BMC не найдена, сбрасываем стиль строки.");
+              row.style.backgroundColor = '';
+              return;
+          }
+      }
+
+      if (!text || text === '(не задано)' || text.toLowerCase() === 'none') {
+        console.log("[SLA Color] Дата не задана ни в одном из столбцов, сбрасываем стиль строки.");
         row.style.backgroundColor = '';
         return;
       }
@@ -156,11 +189,9 @@ function colorDueDateRows() {
         console.log("[SLA Color] SLA просрочен, устанавливаем красный.");
         row.style.backgroundColor = '#ffebee';
       } else if (diffMinutes < 60*24) {
-
         console.log("[SLA Color] Менее 1 суток до SLA, устанавливаем жёлтый.");
         row.style.backgroundColor = '#fff8e1';
       } else {
-
         console.log("[SLA Color] SLA не подходит под условия, сбрасываем стиль.");
         row.style.backgroundColor = '';
       }
@@ -225,7 +256,6 @@ function makeTableResizable(table) {
             e.preventDefault();
             startX = e.clientX;
 
-
             const allRows = Array.from(table.querySelectorAll('tr'));
 
             const cellsToResize = allRows
@@ -270,11 +300,9 @@ function makeTableResizable(table) {
 
                 // Применяем стили к найденным контейнерам
                 contentContainers.forEach(container => {
-
                     container.style.textOverflow = 'clip';
                     container.style.overflow = 'visible';
                     container.style.whiteSpace = 'normal';
-
                 });
 
                 // Обновляем позицию ресайзера

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SimpleOne Plugin by Terekhov",
-  "version": "1.5.1",
+  "version": "1.5.3",
   "description": "Позволяет кастомизировать S1 и его отдельные элементы",
   "permissions": [
     "activeTab",
