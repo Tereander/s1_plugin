@@ -4,9 +4,17 @@
   "version": "1.5.3",
   "description": "Позволяет кастомизировать S1 и его отдельные элементы",
   "permissions": [
+    "storage",
     "activeTab",
-    "storage"
+    "tabs",
+    "scripting"
   ],
+  "host_permissions": [
+    "https://sd.jet.su/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Настройки плагина"
