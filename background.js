@@ -170,6 +170,7 @@ function cleanupTabState(tabId, errorMessage, htmlResult) {
     // Отправляем результат
     if (errorMessage) {
         state.sendResponse({ error: errorMessage });
+        state.sendResponse({ error: errorMessage });
     } else if (htmlResult) {
         state.sendResponse({ html: htmlResult });
     }

@@ -1,3 +1,6 @@
+
+// content.js
+
 // --- Константы ---
 const DATA_ENHANCED_COLOR = 'data-enhanced-color';
 const DATA_ENHANCED_RESIZE = 'data-enhanced-resize';
@@ -11,7 +14,7 @@ let currentSettings = {
 let historyPanel = null;
 let historyContent = null;
 let loadingIndicator = null;
-let originalBodyStyle = null; // Для сохранения оригинальных стилей body
+let originalBodyStyle = null;
 
 // --- Функция для загрузки настроек из chrome.storage ---
 function loadSettings() {
@@ -92,11 +95,11 @@ function addHistoryPanel() {
             bottom: 0;
             left: 0;
             right: 0;
-            height: 50vh; /* 50% высоты */
+            height: 50vh;
             background: white;
             border-top: 2px solid #ccc;
             z-index: 10000;
-            display: none; /* Сначала скрыта */
+            display: none;
             flex-direction: column;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         }
@@ -154,7 +157,6 @@ function addHistoryPanel() {
             display: none;
         }
 
-        /* Стили для данных таски в формате "Поле: значение" */
         .task-data-item {
             margin-bottom: 8px;
             padding: 5px 0;
@@ -171,10 +173,9 @@ function addHistoryPanel() {
         .task-data-value {
             display: inline-block;
             word-break: break-word;
-            max-width: calc(100% - 130px); /* Оставляем место для label */
+            max-width: calc(100% - 130px);
         }
 
-        /* Стили для активности - копируем из оригинального HTML */
         .activity-item {
             margin-bottom: 15px;
             padding: 10px;
@@ -249,15 +250,11 @@ function addHistoryPanel() {
     document.body.appendChild(panel);
 
     historyPanel = panel;
-    // Обновляем ссылки на элементы
-    const taskDataContent = document.getElementById('task-data-content');
-    const taskDataLoading = document.getElementById('task-data-loading');
-    historyContent = document.getElementById('activity-content');  // Правая часть
-    loadingIndicator = document.getElementById('activity-loading'); // Правая часть
+    historyContent = document.getElementById('activity-content');
+    loadingIndicator = document.getElementById('activity-loading');
 
     document.getElementById('close-history-panel').addEventListener('click', () => {
         historyPanel.style.display = 'none';
-        // Восстанавливаем оригинальные стили body
         if (originalBodyStyle) {
             document.body.style.height = originalBodyStyle.height;
             document.body.style.overflow = originalBodyStyle.overflow;
@@ -269,28 +266,24 @@ function addHistoryPanel() {
 
 // --- Функция для извлечения данных таски из текущей строки таблицы ---
 function extractTaskDataFromRow(clickedButton) {
-    // Находим строку таблицы, в которой находится кнопка
     let currentRow = clickedButton.closest('tr[data-test="table-row"]');
     if (!currentRow) {
         console.warn('[TaskData] Не найдена строка таблицы для кнопки');
         return null;
     }
 
-    // Находим ячейку с ссылкой (обычно это ячейка с номером)
     const linkCell = currentRow.querySelector('td a, th a');
     if (!linkCell) {
         console.warn('[TaskData] Не найдена ячейка со ссылкой');
         return null;
     }
 
-    // Извлекаем все ячейки в строке
     const allCells = currentRow.querySelectorAll('td, th');
     if (allCells.length === 0) {
         console.warn('[TaskData] Нет ячеек в строке');
         return null;
     }
 
-    // Получаем заголовки из thead (если есть)
     const table = currentRow.closest('table');
     let headers = [];
     if (table) {
@@ -301,22 +294,18 @@ function extractTaskDataFromRow(clickedButton) {
         }
     }
 
-    // Формируем HTML с данными в формате "Поле: значение"
     let html = '';
 
-    // Обрабатываем каждую ячейку с соответствующим заголовком
     allCells.forEach((cell, index) => {
         const headerText = headers[index] || `Поле ${index + 1}`;
 
-        // Пропускаем ячейки с кнопкой "Активность" и пустые заголовки
         if (headerText === 'Активность' || headerText === 'Поле 1' || headerText === 'Поле 2') {
-            return; // Пропускаем эти заголовки
+            return;
         }
 
-        // Берем текстовое содержимое, но сохраняем важные HTML-теги
         const cellContent = cell.innerHTML.trim();
 
-        if (cellContent && cellContent !== '' && headerText !== 'Активность') {  // Только непустые значения и не кнопка активности
+        if (cellContent && cellContent !== '' && headerText !== 'Активность') {
             html += `
                 <div class="task-data-item">
                     <span class="task-data-label">${headerText}:</span>
@@ -348,17 +337,15 @@ function getTaskDataFromCurrentRow(clickedButton) {
     }
 }
 
-// --- Функция для извлечения активности из URL (новая версия через новую вкладку) ---
+// --- Функция для извлечения активности из URL ---
 async function fetchActivityFromUrlNew(url) {
     return new Promise((resolve, reject) => {
         console.log('[Activity] Отправка запроса на извлечение активности в background:', url);
 
-        // Отправляем сообщение в background
         chrome.runtime.sendMessage({
             action: "fetchActivity",
             url: url
         }, (response) => {
-            // Проверяем, была ли ошибка
             if (chrome.runtime.lastError) {
                 console.error('[Activity] Ошибка при отправке сообщения в background:', chrome.runtime.lastError);
                 reject(chrome.runtime.lastError);
@@ -383,7 +370,6 @@ async function fetchActivityFromUrlNew(url) {
 async function showActivity(url, clickedButton) {
     if (!historyPanel) addHistoryPanel();
 
-    // Сохраняем оригинальные стили body перед изменением
     if (!originalBodyStyle) {
         originalBodyStyle = {
             height: document.body.style.height,
@@ -392,52 +378,41 @@ async function showActivity(url, clickedButton) {
         };
     }
 
-    // Устанавливаем высоту body до 50vh, чтобы освободить место для панели
     document.body.style.height = '50vh';
     document.body.style.overflow = 'auto';
     document.body.style.maxHeight = '50vh';
 
     historyPanel.style.display = 'flex';
 
-    // Показываем загрузку в обеих частях
     document.getElementById('task-data-loading').style.display = 'block';
     document.getElementById('task-data-content').style.display = 'none';
     document.getElementById('activity-loading').style.display = 'block';
     document.getElementById('activity-content').style.display = 'none';
 
     try {
-        // Извлекаем данные таски из текущей строки таблицы (синхронно)
         const taskDataHTML = getTaskDataFromCurrentRow(clickedButton);
-
-        // Загружаем активность из удаленной страницы (асинхронно)
         const activityHTML = await fetchActivityFromUrlNew(url);
 
-        // Отображаем данные таски в левой части
         document.getElementById('task-data-content').innerHTML = taskDataHTML;
         document.getElementById('task-data-loading').style.display = 'none';
         document.getElementById('task-data-content').style.display = 'block';
 
-        // Обрабатываем HTML активности - убираем лишние элементы в начале
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = activityHTML;
 
-        // Удаляем блок parentformsectionmodel и другие ненужные элементы в начале
-        // Более точный селектор для удаления
         const unwantedElements = tempDiv.querySelectorAll('h1, h2, h3, h4, h5, h6, input[type="checkbox"], .activity-controls, .activity-input, .activity-button, [class*="controls"], [class*="input"], [class*="button"], [id*="parentformsectionmodel"], [class*="parentformsectionmodel"], [data-testid*="parentformsectionmodel"], .parentformsectionmodel, [id^="parentformsectionmodel"], [class^="parentformsectionmodel"]');
 
         unwantedElements.forEach(el => {
-            // Удаляем только элементы в начале, если они первые или ближе к началу
             if (el === tempDiv.firstChild ||
                 el === tempDiv.children[0] ||
                 el === tempDiv.children[1] ||
                 el === tempDiv.children[2] ||
                 el === tempDiv.children[3] ||
-                el === tempDiv.children[4]) { // Удаляем первые 5 элементов, если они ненужные
+                el === tempDiv.children[4]) {
                 el.remove();
             }
         });
 
-        // Отображаем очищенную активность в правой части
         document.getElementById('activity-content').innerHTML = tempDiv.innerHTML;
         document.getElementById('activity-loading').style.display = 'none';
         document.getElementById('activity-content').style.display = 'block';
@@ -446,7 +421,6 @@ async function showActivity(url, clickedButton) {
     } catch (error) {
         console.error('[Activity] Ошибка при загрузке данных:', error);
 
-        // Отображаем ошибку в обеих частях
         const errorHTML = `<div>Ошибка загрузки: ${error.message || error}</div>`;
 
         document.getElementById('task-data-content').innerHTML = errorHTML;
@@ -461,13 +435,11 @@ async function showActivity(url, clickedButton) {
 
 // --- Функция для добавления столбца истории ---
 function addHistoryColumn(table) {
-    // Проверяем, уже ли добавлен столбец
     if (table.querySelector('.history-column-header')) return;
 
     const headerRow = table.querySelector('thead tr');
     if (!headerRow) return;
 
-    // Найдем индекс столбца "Номер" (по тексту заголовка)
     let numberColumnIndex = -1;
     const headers = headerRow.querySelectorAll('th, td');
     headers.forEach((header, index) => {
@@ -476,24 +448,21 @@ function addHistoryColumn(table) {
         }
     });
 
-    if (numberColumnIndex === -1) return; // Не нашли столбец "Номер"
+    if (numberColumnIndex === -1) return;
 
-    // Создаем заголовок для столбца активности
     const historyHeader = document.createElement('th');
     historyHeader.className = 'history-column-header';
     historyHeader.textContent = 'Активность';
     historyHeader.style.width = '80px';
     historyHeader.style.textAlign = 'center';
 
-    // Вставляем перед столбцом "Номер"
     const targetHeader = headers[numberColumnIndex];
     targetHeader.parentNode.insertBefore(historyHeader, targetHeader);
 
-    // Добавляем ячейки активности в каждую строку
     const rows = table.querySelectorAll('tbody tr[data-test="table-row"]');
     rows.forEach(row => {
         const cells = row.querySelectorAll('td, th');
-        if (cells.length <= numberColumnIndex) return; // Защита от ошибок
+        if (cells.length <= numberColumnIndex) return;
 
         const targetCell = cells[numberColumnIndex];
         if (!targetCell) return;
@@ -521,7 +490,7 @@ function addHistoryColumn(table) {
                 if (href) {
                     const fullUrl = new URL(href, window.location.origin).href;
                     console.log('[Activity] Клик по кнопке, открываем активность для URL:', fullUrl);
-                    showActivity(fullUrl, activityBtn); // Передаем кнопку для извлечения данных
+                    showActivity(fullUrl, activityBtn);
                 } else {
                     console.warn('[Activity] Ссылка не найдена в ячейке:', targetCell);
                 }
@@ -529,7 +498,6 @@ function addHistoryColumn(table) {
 
             historyCell.appendChild(activityBtn);
         } else {
-            // Если в ячейке нет ссылки, просто добавим текст
             historyCell.textContent = '-';
             historyCell.style.color = '#999';
             historyCell.style.fontSize = '12px';
@@ -538,7 +506,6 @@ function addHistoryColumn(table) {
         targetCell.parentNode.insertBefore(historyCell, targetCell);
     });
 
-    // Убираем ограничение высоты у таблицы, т.к. теперь body будет ограничен
     table.style.maxHeight = 'none';
     table.style.overflowY = 'auto';
 }
@@ -649,8 +616,10 @@ function colorDueDateRows() {
 
             if (diffMs < 0) {
                 row.style.backgroundColor = '#ffebee';
+                console.log("[SLA Color] Строка окрашена в красный (просрочено):", text);
             } else if (diffMinutes < 60*24) {
                 row.style.backgroundColor = '#fff8e1';
+                console.log("[SLA Color] Строка окрашена в желтый (менее 24 часов):", text);
             } else {
                 row.style.backgroundColor = '';
             }
@@ -681,95 +650,120 @@ function makeTableResizable(table) {
         return;
     }
 
-    if (getComputedStyle(table).position === 'static') {
+    // Временно отключаем observer
+    observer.disconnect();
+
+    try {
+        table.setAttribute(DATA_ENHANCED_RESIZE, 'true');
+
+        // Проверяем, не добавлены ли уже ресайзеры
+        if (table.querySelector('.resizer-container')) {
+            console.log("[Resizer] Ресайзеры уже добавлены, пропускаем");
+            return;
+        }
+
+        // Создаем контейнер для ресайзеров
+        const resizerContainer = document.createElement('div');
+        resizerContainer.className = 'resizer-container';
+        resizerContainer.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        `;
+
         table.style.position = 'relative';
+        table.appendChild(resizerContainer);
+
+        headers.forEach((header, index) => {
+            if (index === headers.length - 1) return;
+
+            const resizer = document.createElement('div');
+            resizer.className = 'table-resizer';
+            resizer.setAttribute('data-resizer-index', index);
+            resizer.style.cssText = `
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 10px;
+                cursor: col-resize;
+                z-index: 101;
+                pointer-events: auto;
+                background-color: transparent;
+                transition: background-color 0.2s;
+            `;
+
+            // Начальная позиция
+            const updateResizerPosition = () => {
+                const headerRect = header.getBoundingClientRect();
+                const tableRect = table.getBoundingClientRect();
+                const leftPosition = (headerRect.right - tableRect.left) - 5;
+                resizer.style.left = leftPosition + 'px';
+            };
+
+            // Устанавливаем начальную позицию с задержкой
+            setTimeout(updateResizerPosition, 0);
+
+            // Добавляем обработчик для ресайзинга
+            setupResizerHandlers(resizer, header, headers, index, table);
+
+            resizerContainer.appendChild(resizer);
+        });
+
+        // Добавляем стили один раз
+        if (!document.head.querySelector('#resizer-styles')) {
+            const style = document.createElement('style');
+            style.id = 'resizer-styles';
+            style.textContent = `
+                .table-resizer:hover {
+                    background-color: rgba(33, 150, 243, 0.3) !important;
+                }
+
+                .table-resizer.resizing {
+                    background-color: rgba(33, 150, 243, 0.5) !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+    } finally {
+        // Включаем observer обратно
+        setTimeout(() => {
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: false,
+                characterData: false
+            });
+        }, 100);
     }
+}
 
-    table.setAttribute(DATA_ENHANCED_RESIZE, 'true');
-    table.querySelectorAll('.table-resizer').forEach(el => el.remove());
+// --- Функция для обновления позиций ресайзеров ---
+function updateResizerPositions() {
+    document.querySelectorAll('table[data-enhanced-resize="true"]').forEach(table => {
+        const resizerContainer = table.querySelector('.resizer-container');
+        if (!resizerContainer) return;
 
-    headers.forEach((header, index) => {
-        if (index === headers.length - 1) return;
+        const headers = Array.from(table.querySelectorAll('thead th, thead td'));
+        const resizers = resizerContainer.querySelectorAll('.table-resizer');
 
-        const resizer = document.createElement('div');
-        resizer.className = 'table-resizer';
+        headers.forEach((header, index) => {
+            if (index >= headers.length - 1) return;
 
-        const updateResizerPosition = () => {
+            const resizer = resizers[index];
+            if (!resizer) return;
+
             const headerRect = header.getBoundingClientRect();
             const tableRect = table.getBoundingClientRect();
-            resizer.style.left = (headerRect.right - tableRect.left) + 'px';
-        };
-
-        updateResizerPosition();
-        table.appendChild(resizer);
-
-        let startX, startWidth;
-
-        resizer.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            startX = e.clientX;
-
-            const allRows = Array.from(table.querySelectorAll('tr'));
-            const cellsToResize = allRows
-                .map(row => {
-                    const cells = row.querySelectorAll('th, td');
-                    return cells[index] || null;
-                })
-                .filter(Boolean);
-
-            if (cellsToResize.length === 0) {
-                console.log("[Resizer] Ячейки для изменения ширины не найдены для столбца", index);
-                return;
-            }
-            startWidth = cellsToResize[0].offsetWidth;
-
-            const onMouseMove = (moveEvent) => {
-                const dx = moveEvent.clientX - startX;
-                let newWidth = startWidth + dx;
-                if (newWidth < 20) newWidth = 20;
-
-                cellsToResize.forEach(cell => {
-                    cell.style.width = newWidth + 'px';
-                    cell.style.minWidth = newWidth + 'px';
-                    cell.style.maxWidth = newWidth + 'px';
-                });
-
-                const allTargetRows = Array.from(table.querySelectorAll('tr'));
-                const contentContainers = allTargetRows.flatMap(row => {
-                    const cells = row.querySelectorAll('th, td');
-                    const targetCell = cells[index];
-                    if (targetCell) {
-                        const contentDiv = targetCell.querySelector('.src-components-groupedTable-cellDescription-___styles-module__content___wrzOw');
-                        if (contentDiv) {
-                            const containerDiv = contentDiv.querySelector('.src-components-groupedTable-cellDescription-___styles-module__container___u5dbD');
-                            if (containerDiv) {
-                                return [containerDiv];
-                            }
-                        }
-                    }
-                    return [];
-                });
-
-                contentContainers.forEach(container => {
-                    container.style.textOverflow = 'clip';
-                    container.style.overflow = 'visible';
-                    container.style.whiteSpace = 'normal';
-                });
-
-                updateResizerPosition();
-            };
-
-            const onMouseUp = () => {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-            };
-
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
+            const leftPosition = (headerRect.right - tableRect.left) - 5;
+            resizer.style.left = leftPosition + 'px';
         });
     });
 }
-
 // --- Функция для сброса флагов ---
 function resetEnhancedFlags() {
     document.querySelectorAll(`[${DATA_ENHANCED_COLOR}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_COLOR));
@@ -782,7 +776,7 @@ function enhanceAllTables() {
     resetEnhancedFlags();
 
     document.querySelectorAll('table').forEach(table => {
-        addHistoryColumn(table); // Добавляем столбец активности первым
+        addHistoryColumn(table);
         colorDueDateRows();
         makeTableResizable(table);
     });
@@ -801,7 +795,9 @@ async function init() {
         enhanceAllTables();
     } else {
         console.log("[Main] Ожидание загрузки страницы...");
-        window.addEventListener('load', enhanceAllTables, { once: true });
+        window.addEventListener('load', () => {
+            enhanceAllTables();
+        }, { once: true });
     }
 
     const observer = new MutationObserver((mutationsList) => {
@@ -842,7 +838,309 @@ async function init() {
 // Запускаем инициализацию
 if (document.readyState === 'loading') {
     console.log("[Main] Документ ещё загружается...");
-    document.addEventListener('DOMContentLoaded', init, { once: true });
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    console.log("[Main] Документ готов, запуск инициализации...");
+    init();
+}
+
+// --- Функция для сброса флагов ---
+function resetEnhancedFlags() {
+    document.querySelectorAll(`[${DATA_ENHANCED_COLOR}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_COLOR));
+    document.querySelectorAll(`[${DATA_ENHANCED_RESIZE}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_RESIZE));
+}
+
+// --- Обрабатываем все НЕОБРАБОТАННЫЕ таблицы на странице ---
+// Добавьте глобальный флаг
+let isEnhancingTables = false;
+let observerDebounceTimer = null;
+
+// Обновите функцию enhanceAllTables с защитой от рекурсии
+function enhanceAllTables() {
+    if (isEnhancingTables) {
+        console.log("[Main] Уже выполняется обработка таблиц, пропускаем...");
+        return;
+    }
+
+    console.log("[Main] Запуск enhanceAllTables...");
+    isEnhancingTables = true;
+
+    try {
+        resetEnhancedFlags();
+        document.querySelectorAll('table').forEach(table => {
+            addHistoryColumn(table);
+            colorDueDateRows();
+            makeTableResizable(table);
+        });
+
+        setTimeout(updateResizerPositions, 100);
+    } finally {
+        // Снимаем флаг после завершения с небольшой задержкой
+        setTimeout(() => {
+            isEnhancingTables = false;
+            console.log("[Main] Обработка таблиц завершена");
+        }, 50);
+    }
+}
+
+// Обновленный MutationObserver
+const observer = new MutationObserver((mutationsList) => {
+    // Игнорируем изменения, если мы сами обрабатываем таблицы
+    if (isEnhancingTables) return;
+
+    // Проверяем, действительно ли изменения касаются таблиц
+    let shouldUpdate = false;
+
+    for (let mutation of mutationsList) {
+        // Игнорируем изменения в наших собственных элементах
+        if (mutation.target.classList?.contains('table-resizer') ||
+            mutation.target.classList?.contains('resizer-container') ||
+            mutation.target.id === 'history-panel') {
+            continue;
+        }
+
+        // Игнорируем изменения стилей и классов (они часто триггерятся нашим кодом)
+        if (mutation.type === 'attributes' &&
+            (mutation.attributeName === 'style' ||
+             mutation.attributeName === 'class')) {
+            continue;
+        }
+
+        // Проверяем только добавление/удаление узлов
+        if (mutation.type === 'childList') {
+            for (let node of mutation.addedNodes) {
+                if (node.nodeType === 1) { // Element node
+                    // Проверяем только существенные изменения
+                    if (node.tagName === 'TABLE' ||
+                        (node.querySelector && node.querySelector('table')) ||
+                        (node.classList && node.classList.contains('src-components-groupedTable'))) {
+                        shouldUpdate = true;
+                        break;
+                    }
+                }
+            }
+
+            for (let node of mutation.removedNodes) {
+                if (node.nodeType === 1) { // Element node
+                    if (node.tagName === 'TABLE' ||
+                        (node.querySelector && node.querySelector('table'))) {
+                        shouldUpdate = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (shouldUpdate) break;
+    }
+
+    if (shouldUpdate) {
+        // Дебаунс - ждем, пока изменения устоятся
+        if (observerDebounceTimer) {
+            clearTimeout(observerDebounceTimer);
+        }
+
+        observerDebounceTimer = setTimeout(() => {
+            console.log("[Main] Обнаружены существенные изменения в DOM, запуск обработки...");
+            enhanceAllTables();
+        }, 300); // Увеличил задержку
+    }
+});
+
+// Настройка observer с более специфичными параметрами
+observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: false, // Отключаем отслеживание атрибутов
+    attributeFilter: [], // Пустой фильтр = не отслеживаем атрибуты
+    characterData: false // Не отслеживаем изменения текста
+});
+
+function setupResizerHandlers(resizer, header, headers, index, table) {
+    let isResizing = false;
+
+    resizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        resizer.classList.add('resizing');
+
+        const tableRect = table.getBoundingClientRect();
+        const startX = e.clientX;
+
+        const allRows = Array.from(table.querySelectorAll('tr'));
+        const currentColumnCells = allRows
+            .map(row => {
+                const cells = row.querySelectorAll('th, td');
+                return cells[index] || null;
+            })
+            .filter(Boolean);
+
+        const nextHeader = headers[index + 1];
+        const nextColumnCells = allRows
+            .map(row => {
+                const cells = row.querySelectorAll('th, td');
+                return cells[index + 1] || null;
+            })
+            .filter(Boolean);
+
+        const startWidthCurrent = currentColumnCells[0]?.offsetWidth || 0;
+        const startWidthNext = nextColumnCells[0]?.offsetWidth || 0;
+
+        const onMouseMove = (moveEvent) => {
+            if (!isResizing) return;
+
+            const dx = moveEvent.clientX - startX;
+            let newWidthCurrent = Math.max(20, startWidthCurrent + dx);
+            let newWidthNext = Math.max(20, startWidthNext - dx);
+
+            // Применяем новые ширины
+            currentColumnCells.forEach(cell => {
+                cell.style.width = newWidthCurrent + 'px';
+                cell.style.minWidth = newWidthCurrent + 'px';
+                cell.style.maxWidth = newWidthCurrent + 'px';
+            });
+
+            nextColumnCells.forEach(cell => {
+                cell.style.width = newWidthNext + 'px';
+                cell.style.minWidth = newWidthNext + 'px';
+                cell.style.maxWidth = newWidthNext + 'px';
+            });
+
+            // Обновляем позицию текущего ресайзера
+            resizer.style.left = (startWidthCurrent + dx - 5) + 'px';
+
+            // Обновляем текст в ячейках
+            updateCellContentVisibility([...currentColumnCells, ...nextColumnCells]);
+        };
+
+        const onMouseUp = () => {
+            isResizing = false;
+            resizer.classList.remove('resizing');
+
+            // Обновляем все ресайзеры после завершения
+            setTimeout(() => {
+                updateAllResizerPositions(table);
+            }, 10);
+
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+}
+
+function updateAllResizerPositions(table) {
+    const resizerContainer = table.querySelector('.resizer-container');
+    if (!resizerContainer) return;
+
+    const headers = Array.from(table.querySelectorAll('thead th, thead td'));
+    const resizers = resizerContainer.querySelectorAll('.table-resizer');
+
+    headers.forEach((header, index) => {
+        if (index >= headers.length - 1) return;
+
+        const resizer = resizers[index];
+        if (!resizer) return;
+
+        const headerRect = header.getBoundingClientRect();
+        const tableRect = table.getBoundingClientRect();
+        const leftPosition = (headerRect.right - tableRect.left) - 5;
+        resizer.style.left = leftPosition + 'px';
+    });
+}
+
+function updateCellContentVisibility(cells) {
+    cells.forEach(cell => {
+        const contentDiv = cell.querySelector('.src-components-groupedTable-cellDescription-___styles-module__content___wrzOw');
+        if (contentDiv) {
+            const containerDiv = contentDiv.querySelector('.src-components-groupedTable-cellDescription-___styles-module__container___u5dbD');
+            if (containerDiv) {
+                containerDiv.style.cssText = `
+                    overflow: visible !important;
+                    white-space: normal !important;
+                    text-overflow: clip !important;
+                    word-break: break-word !important;
+                    max-width: none !important;
+                `;
+            }
+        }
+    });
+}
+
+// Добавьте декоратор для предотвращения повторных вызовов
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Оберните enhanceAllTables в debounce
+const debouncedEnhanceAllTables = debounce(enhanceAllTables, 500);
+
+// В MutationObserver используйте debounced версию
+observerDebounceTimer = setTimeout(() => {
+    console.log("[Main] Обнаружены существенные изменения в DOM, запуск обработки...");
+    debouncedEnhanceAllTables();
+}, 300);
+
+// --- Основной запуск ---
+async function init() {
+    console.log("[Main] Инициализация плагина...");
+
+    await loadSettings();
+    toggleAutoRefresh();
+    enhanceAllTables();
+
+    if (document.readyState === 'complete') {
+        console.log("[Main] Страница уже загружена, повторный запуск обработки...");
+        enhanceAllTables();
+    } else {
+        console.log("[Main] Ожидание загрузки страницы...");
+        window.addEventListener('load', () => {
+            enhanceAllTables();
+        }, { once: true });
+    }
+
+    window.addEventListener('resize', () => {
+        setTimeout(updateResizerPositions, 100);
+    });
+
+    const observer = new MutationObserver((mutationsList) => {
+    let shouldUpdate = false;
+    for (let mutation of mutationsList) {
+        if (mutation.type === 'childList' || mutation.type === 'attributes') {
+            shouldUpdate = true;
+            break;
+        }
+    }
+    if (shouldUpdate) {
+        console.log("[Main] Обнаружены изменения в DOM, запуск обработки...");
+        setTimeout(() => {
+            enhanceAllTables();
+            updateResizerPositions();
+        }, 200);
+    }
+});
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Запускаем инициализацию
+if (document.readyState === 'loading') {
+    console.log("[Main] Документ ещё загружается...");
+    document.addEventListener('DOMContentLoaded', init);
 } else {
     console.log("[Main] Документ готов, запуск инициализации...");
     init();
