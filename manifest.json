@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SimpleOne Plugin by Terekhov",
-  "version": "1.5.6",
+  "version": "1.7.2",
   "description": "Позволяет кастомизировать S1 и его отдельные элементы",
   "permissions": [
     "storage",
@@ -23,11 +23,17 @@
     {
       "matches": ["https://sd.jet.su/list/*"],
       "js": ["content.js"],
-      "css": ["styles.css"]
+      "css": ["styles.css"],
+      "run_at": "document_end"
     },
     {
       "matches": ["https://sd.jet.su/record/*"],
       "js": ["activity_fetcher.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://sd.jet.su/record/itsm_infosys_task/*", "https://sd.jet.su/record/itsm_infosys_order/*"],
+      "js": ["deferred-styler.js"],
       "run_at": "document_end"
     }
   ],
