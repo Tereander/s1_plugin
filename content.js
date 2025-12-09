@@ -1,4 +1,3 @@
-
 // content.js
 
 // --- Константы ---
@@ -12,11 +11,12 @@ let currentSettings = {
     intervalSeconds: 10
 };
 let historyPanel = null;
-let historyContent = null;
-let loadingIndicator = null;
 let originalBodyStyle = null;
+let isEnhancingTables = false;
+let observerDebounceTimer = null;
+let activityRequests = new Map();
 
-// --- Функция для загрузки настроек из chrome.storage ---
+// --- Функции для работы с настройками ---
 function loadSettings() {
     return new Promise((resolve) => {
         chrome.storage.sync.get(['autoRefreshEnabled', 'autoRefreshInterval'], (result) => {
@@ -28,22 +28,7 @@ function loadSettings() {
     });
 }
 
-// --- Функция для сохранения настроек в chrome.storage ---
-function saveSettings(settings) {
-    return new Promise((resolve) => {
-        chrome.storage.sync.set({
-            autoRefreshEnabled: settings.enabled,
-            autoRefreshInterval: settings.intervalSeconds
-        }, () => {
-            console.log('[Settings] Сохранены настройки:', settings);
-            resolve();
-        });
-    });
-}
-
-// --- Функция для управления автообновлением ---
-async function toggleAutoRefresh() {
-    await loadSettings();
+function toggleAutoRefresh() {
     if (currentSettings.enabled) {
         if (refreshIntervalId) {
             clearInterval(refreshIntervalId);
@@ -62,7 +47,7 @@ async function toggleAutoRefresh() {
     }
 }
 
-// --- Функция для добавления панели истории ---
+// --- Панель истории ---
 function addHistoryPanel() {
     if (document.getElementById('history-panel')) return;
 
@@ -76,18 +61,16 @@ function addHistoryPanel() {
         <div class="history-panel-content">
             <div class="panel-grid">
                 <div class="task-data-section">
-                    <div class="task-data-loading" id="task-data-loading">Загрузка данных заявки...</div>
                     <div class="task-data-content" id="task-data-content"></div>
                 </div>
                 <div class="activity-section">
-                    <div class="activity-loading" id="activity-loading">Загрузка активности...</div>
                     <div class="activity-content" id="activity-content"></div>
                 </div>
             </div>
         </div>
     `;
 
-    // Добавляем стили
+    // Стили
     const style = document.createElement('style');
     style.textContent = `
         #history-panel {
@@ -103,7 +86,6 @@ function addHistoryPanel() {
             flex-direction: column;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         }
-
         .history-panel-header {
             padding: 10px;
             background: #f5f5f5;
@@ -112,12 +94,10 @@ function addHistoryPanel() {
             justify-content: space-between;
             align-items: center;
         }
-
         .history-panel-header h3 {
             margin: 0;
             font-size: 14px;
         }
-
         .close-btn {
             background: none;
             border: none;
@@ -125,124 +105,45 @@ function addHistoryPanel() {
             cursor: pointer;
             padding: 0 5px;
         }
-
         .history-panel-content {
             flex: 1;
             overflow: hidden;
         }
-
         .panel-grid {
             display: flex;
             height: 100%;
         }
-
         .task-data-section, .activity-section {
             flex: 1;
             padding: 10px;
             overflow-y: auto;
             border-left: 1px solid #eee;
         }
-
         .task-data-section:first-child {
             border-left: none;
         }
-
-        .task-data-loading, .activity-loading {
-            text-align: center;
-            padding: 20px;
-            display: block;
-        }
-
-        .task-data-content, .activity-content {
-            display: none;
-        }
-
         .task-data-item {
             margin-bottom: 8px;
             padding: 5px 0;
             border-bottom: 1px solid #eee;
         }
-
         .task-data-label {
             font-weight: bold;
             color: #555;
             display: inline-block;
             min-width: 120px;
         }
-
         .task-data-value {
             display: inline-block;
             word-break: break-word;
             max-width: calc(100% - 130px);
         }
-
-        .activity-item {
-            margin-bottom: 15px;
-            padding: 10px;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            background: #fafafa;
+        /* Стили для ресайзеров */
+        .table-resizer:hover {
+            background-color: rgba(33, 150, 243, 0.3) !important;
         }
-
-        .activity-item-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .activity-item-user {
-            display: flex;
-            align-items: center;
-        }
-
-        .activity-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-
-        .activity-content-block {
-            flex: 1;
-        }
-
-        .user-title {
-            font-weight: bold;
-            font-size: 13px;
-        }
-
-        .activity-date {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .activity-history {
-            margin-bottom: 10px;
-        }
-
-        .history-item-new, .history-item-old {
-            display: flex;
-            margin-bottom: 5px;
-        }
-
-        .item-new-title, .item-old-title {
-            font-weight: bold;
-            min-width: 100px;
-            flex-shrink: 0;
-            color: #555;
-        }
-
-        .item-new-text, .item-old-text {
-            flex: 1;
-        }
-
-        .activity-info {
-            margin-top: 10px;
-        }
-
-        .comment-message {
-            line-height: 1.4;
+        .table-resizer.resizing {
+            background-color: rgba(33, 150, 243, 0.5) !important;
         }
     `;
 
@@ -250,8 +151,6 @@ function addHistoryPanel() {
     document.body.appendChild(panel);
 
     historyPanel = panel;
-    historyContent = document.getElementById('activity-content');
-    loadingIndicator = document.getElementById('activity-loading');
 
     document.getElementById('close-history-panel').addEventListener('click', () => {
         historyPanel.style.display = 'none';
@@ -264,24 +163,17 @@ function addHistoryPanel() {
     });
 }
 
-// --- Функция для извлечения данных таски из текущей строки таблицы ---
+// --- Извлечение данных из таблицы ---
 function extractTaskDataFromRow(clickedButton) {
     let currentRow = clickedButton.closest('tr[data-test="table-row"]');
     if (!currentRow) {
         console.warn('[TaskData] Не найдена строка таблицы для кнопки');
-        return null;
-    }
-
-    const linkCell = currentRow.querySelector('td a, th a');
-    if (!linkCell) {
-        console.warn('[TaskData] Не найдена ячейка со ссылкой');
-        return null;
+        return '<div>Не найдена строка таблицы</div>';
     }
 
     const allCells = currentRow.querySelectorAll('td, th');
     if (allCells.length === 0) {
-        console.warn('[TaskData] Нет ячеек в строке');
-        return null;
+        return '<div>Нет данных в строке</div>';
     }
 
     const table = currentRow.closest('table');
@@ -295,17 +187,16 @@ function extractTaskDataFromRow(clickedButton) {
     }
 
     let html = '';
-
     allCells.forEach((cell, index) => {
         const headerText = headers[index] || `Поле ${index + 1}`;
 
-        if (headerText === 'Активность' || headerText === 'Поле 1' || headerText === 'Поле 2') {
+        // Пропускаем столбец активности
+        if (headerText === 'Активность' || cell.classList.contains('history-column-cell')) {
             return;
         }
 
-        const cellContent = cell.innerHTML.trim();
-
-        if (cellContent && cellContent !== '' && headerText !== 'Активность') {
+        const cellContent = cell.textContent.trim();
+        if (cellContent && cellContent !== '') {
             html += `
                 <div class="task-data-item">
                     <span class="task-data-label">${headerText}:</span>
@@ -315,58 +206,76 @@ function extractTaskDataFromRow(clickedButton) {
         }
     });
 
-    if (html === '') {
-        html = '<div>Нет данных для отображения</div>';
-    }
-
-    return html;
+    return html || '<div>Нет данных для отображения</div>';
 }
 
-// --- Функция для извлечения данных таски ---
-function getTaskDataFromCurrentRow(clickedButton) {
-    try {
-        const taskDataHTML = extractTaskDataFromRow(clickedButton);
-        if (taskDataHTML) {
-            return taskDataHTML;
-        } else {
-            return '<div>Не удалось извлечь данные заявки из таблицы</div>';
-        }
-    } catch (error) {
-        console.error('[TaskData] Ошибка при извлечении данных:', error);
-        return `<div>Ошибка при извлечении данных: ${error.message}</div>`;
-    }
-}
-
-// --- Функция для извлечения активности из URL ---
+// --- Получение активности ---
 async function fetchActivityFromUrlNew(url) {
     return new Promise((resolve, reject) => {
-        console.log('[Activity] Отправка запроса на извлечение активности в background:', url);
+        console.log('[Activity] Отправка запроса на извлечение активности:', url);
+
+        const requestId = Date.now() + Math.random();
+
+        // Добавляем слушатель для получения ответа
+        const messageListener = (message) => {
+            if (message.action === "activityDataReceived" && message.requestId === requestId) {
+                console.log('[Activity] Получены данные активности от background');
+                chrome.runtime.onMessage.removeListener(messageListener);
+                activityRequests.delete(requestId);
+
+                if (message.html) {
+                    resolve(message.html);
+                } else {
+                    reject(new Error('Нет данных активности'));
+                }
+            }
+        };
+
+        chrome.runtime.onMessage.addListener(messageListener);
+        activityRequests.set(requestId, { resolve, reject, listener: messageListener });
 
         chrome.runtime.sendMessage({
             action: "fetchActivity",
-            url: url
+            url: url,
+            requestId: requestId
         }, (response) => {
             if (chrome.runtime.lastError) {
-                console.error('[Activity] Ошибка при отправке сообщения в background:', chrome.runtime.lastError);
+                console.error('[Activity] Ошибка отправки сообщения:', chrome.runtime.lastError);
+                chrome.runtime.onMessage.removeListener(messageListener);
+                activityRequests.delete(requestId);
                 reject(chrome.runtime.lastError);
                 return;
             }
 
             if (response && response.error) {
                 console.error('[Activity] Ошибка от background:', response.error);
+                chrome.runtime.onMessage.removeListener(messageListener);
+                activityRequests.delete(requestId);
                 reject(new Error(response.error));
-            } else if (response && response.html) {
-                console.log('[Activity] Получены данные активности из background');
-                resolve(response.html);
+            } else if (response && response.success) {
+                console.log('[Activity] Запрос принят, ожидание данных... ID:', requestId);
+                // Ждем activityDataReceived через messageListener
             } else {
                 console.error('[Activity] Неожиданный ответ от background:', response);
+                chrome.runtime.onMessage.removeListener(messageListener);
+                activityRequests.delete(requestId);
                 reject(new Error('Unexpected response from background'));
             }
         });
+
+        // Таймаут на случай если ответ не придет
+        setTimeout(() => {
+            if (activityRequests.has(requestId)) {
+                console.log('[Activity] Таймаут ожидания активности');
+                chrome.runtime.onMessage.removeListener(messageListener);
+                activityRequests.delete(requestId);
+                reject(new Error('Таймаут загрузки активности'));
+            }
+        }, 45000); // 45 секунд
     });
 }
 
-// --- Функция для отображения активности и данных таски ---
+// --- Показ активности ---
 async function showActivity(url, clickedButton) {
     if (!historyPanel) addHistoryPanel();
 
@@ -384,56 +293,39 @@ async function showActivity(url, clickedButton) {
 
     historyPanel.style.display = 'flex';
 
-    document.getElementById('task-data-loading').style.display = 'block';
-    document.getElementById('task-data-content').style.display = 'none';
-    document.getElementById('activity-loading').style.display = 'block';
-    document.getElementById('activity-content').style.display = 'none';
+    // Сразу показываем данные из таблицы (левая часть)
+    const taskDataHTML = extractTaskDataFromRow(clickedButton);
+    document.getElementById('task-data-content').innerHTML = taskDataHTML;
 
+    // Показываем заглушку в правой части
+    document.getElementById('activity-content').innerHTML = '<div>Загрузка активности (может занять до 30 секунд)...</div>';
+
+    // Загружаем активность асинхронно
     try {
-        const taskDataHTML = getTaskDataFromCurrentRow(clickedButton);
         const activityHTML = await fetchActivityFromUrlNew(url);
 
-        document.getElementById('task-data-content').innerHTML = taskDataHTML;
-        document.getElementById('task-data-loading').style.display = 'none';
-        document.getElementById('task-data-content').style.display = 'block';
-
+        // Упрощенная очистка HTML
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = activityHTML;
 
-        const unwantedElements = tempDiv.querySelectorAll('h1, h2, h3, h4, h5, h6, input[type="checkbox"], .activity-controls, .activity-input, .activity-button, [class*="controls"], [class*="input"], [class*="button"], [id*="parentformsectionmodel"], [class*="parentformsectionmodel"], [data-testid*="parentformsectionmodel"], .parentformsectionmodel, [id^="parentformsectionmodel"], [class^="parentformsectionmodel"]');
-
-        unwantedElements.forEach(el => {
-            if (el === tempDiv.firstChild ||
-                el === tempDiv.children[0] ||
-                el === tempDiv.children[1] ||
-                el === tempDiv.children[2] ||
-                el === tempDiv.children[3] ||
-                el === tempDiv.children[4]) {
-                el.remove();
-            }
-        });
+        // Удаляем лишние элементы
+        const unwanted = tempDiv.querySelectorAll('script, style, link, meta, input, button, form, textarea, select');
+        unwanted.forEach(el => el.remove());
 
         document.getElementById('activity-content').innerHTML = tempDiv.innerHTML;
-        document.getElementById('activity-loading').style.display = 'none';
-        document.getElementById('activity-content').style.display = 'block';
-
-        console.log('[Activity] Данные таски и активность успешно загружены и отображены.');
+        console.log('[Activity] Активность загружена и отображена.');
     } catch (error) {
-        console.error('[Activity] Ошибка при загрузке данных:', error);
-
-        const errorHTML = `<div>Ошибка загрузки: ${error.message || error}</div>`;
-
-        document.getElementById('task-data-content').innerHTML = errorHTML;
-        document.getElementById('task-data-loading').style.display = 'none';
-        document.getElementById('task-data-content').style.display = 'block';
-
-        document.getElementById('activity-content').innerHTML = errorHTML;
-        document.getElementById('activity-loading').style.display = 'none';
-        document.getElementById('activity-content').style.display = 'block';
+        console.error('[Activity] Ошибка при загрузке активности:', error);
+        document.getElementById('activity-content').innerHTML =
+            `<div style="color: red; padding: 20px; text-align: center;">
+                <strong>Ошибка загрузки активности:</strong><br>
+                ${error.message}<br><br>
+                Попробуйте снова или проверьте доступность страницы заявки.
+            </div>`;
     }
 }
 
-// --- Функция для добавления столбца истории ---
+// --- Столбец активности ---
 function addHistoryColumn(table) {
     if (table.querySelector('.history-column-header')) return;
 
@@ -443,7 +335,7 @@ function addHistoryColumn(table) {
     let numberColumnIndex = -1;
     const headers = headerRow.querySelectorAll('th, td');
     headers.forEach((header, index) => {
-        if (header.textContent.trim() === 'Номер') {
+        if (header.textContent.trim() === 'Номер' || header.textContent.trim() === '#') {
             numberColumnIndex = index;
         }
     });
@@ -473,7 +365,7 @@ function addHistoryColumn(table) {
         historyCell.style.padding = '5px';
 
         const linkElement = targetCell.querySelector('a');
-        if (linkElement) {
+        if (linkElement && linkElement.href) {
             const activityBtn = document.createElement('button');
             activityBtn.textContent = 'Активность';
             activityBtn.style.padding = '2px 8px';
@@ -486,13 +378,11 @@ function addHistoryColumn(table) {
 
             activityBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const href = linkElement.getAttribute('href');
+                e.preventDefault();
+                const href = linkElement.href;
                 if (href) {
-                    const fullUrl = new URL(href, window.location.origin).href;
-                    console.log('[Activity] Клик по кнопке, открываем активность для URL:', fullUrl);
-                    showActivity(fullUrl, activityBtn);
-                } else {
-                    console.warn('[Activity] Ссылка не найдена в ячейке:', targetCell);
+                    console.log('[Activity] Клик по кнопке:', href);
+                    showActivity(href, activityBtn);
                 }
             });
 
@@ -505,123 +395,58 @@ function addHistoryColumn(table) {
 
         targetCell.parentNode.insertBefore(historyCell, targetCell);
     });
-
-    table.style.maxHeight = 'none';
-    table.style.overflowY = 'auto';
 }
 
-// --- Функция для раскраски строк SLA ---
+// --- Раскраска SLA ---
 function colorDueDateRows() {
     const tables = document.querySelectorAll('table');
     const now = new Date();
-    console.log("[SLA Color] Запуск обновления цветов SLA. Текущее время:", now);
 
     tables.forEach(table => {
-        if (table.hasAttribute(DATA_ENHANCED_COLOR)) {
-            console.log("[SLA Color] Таблица уже обработана для раскраски, пропускаем:", table);
-            return;
-        }
+        if (table.hasAttribute(DATA_ENHANCED_COLOR)) return;
 
-        let targetIndexPrimary = -1;
-        let targetIndexFallback = -1;
-
+        let targetIndex = -1;
         const headerCells = table.querySelectorAll('thead th, thead td');
         headerCells.forEach((th, index) => {
             const text = th.textContent.trim();
-            if (text === 'Плановая дата/время окончания') {
-                targetIndexPrimary = index;
-            }
-            if (text === 'Плановая дата/время окончания в BMC') {
-                targetIndexFallback = index;
+            if (text === 'Плановая дата/время окончания' ||
+                text === 'Плановая дата/время окончания в BMC') {
+                targetIndex = index;
             }
         });
 
-        let targetIndex = targetIndexPrimary !== -1 ? targetIndexPrimary : targetIndexFallback;
-
-        if (targetIndex === -1) {
-            console.log("[SLA Color] Ни один из столбцов SLA не найден в таблице, пропускаем.");
-            return;
-        }
+        if (targetIndex === -1) return;
 
         const rows = table.querySelectorAll('tbody tr[data-test="table-row"]');
-        console.log("[SLA Color] Найдено строк для обработки в таблице:", rows.length);
-
         rows.forEach(row => {
             const cells = row.querySelectorAll('td, th');
             const cell = cells[targetIndex];
-            if (!cell) {
-                row.style.backgroundColor = '';
-                return;
-            }
+            if (!cell) return;
 
-            let textElement = cell.querySelector('span:not(.src-components-groupedTable-___styles-module__NotSet___qnmCN)');
-            if (!textElement) {
-                textElement = cell.querySelector('div, span');
-            }
-            if (!textElement) {
-                row.style.backgroundColor = '';
-                return;
-            }
-
-            let text = textElement.textContent.trim();
-
-            if ((!text || text === '(не задано)' || text.toLowerCase() === 'none') && targetIndexFallback !== -1 && targetIndexFallback !== targetIndexPrimary) {
-                const fallbackCell = cells[targetIndexFallback];
-                if (fallbackCell) {
-                    let fallbackTextElement = fallbackCell.querySelector('span:not(.src-components-groupedTable-___styles-module__NotSet___qnmCN)');
-                    if (!fallbackTextElement) {
-                        fallbackTextElement = fallbackCell.querySelector('div, span');
-                    }
-                    if (fallbackTextElement) {
-                        text = fallbackTextElement.textContent.trim();
-                    } else {
-                        row.style.backgroundColor = '';
-                        return;
-                    }
-                } else {
-                    row.style.backgroundColor = '';
-                    return;
-                }
-            }
-
+            let text = cell.textContent.trim();
             if (!text || text === '(не задано)' || text.toLowerCase() === 'none') {
                 row.style.backgroundColor = '';
                 return;
             }
 
-            let date = null;
-            date = new Date(text);
+            let date = new Date(text);
             if (isNaN(date.getTime())) {
                 const dateMatch = text.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
                 if (dateMatch) {
                     const [, day, month, year, hour, minute] = dateMatch;
-                    date = new Date(year, month - 1, day, hour, minute, 0, 0);
-                }
-            }
-            if (isNaN(date.getTime())) {
-                const dateMatch = text.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-                if (dateMatch) {
-                    const [, day, month, year] = dateMatch;
-                    date = new Date(year, month - 1, day, 23, 59, 59, 999);
+                    date = new Date(year, month - 1, day, hour, minute);
                 }
             }
 
-            if (isNaN(date.getTime())) {
-                row.style.backgroundColor = '';
-                return;
-            }
+            if (isNaN(date.getTime())) return;
 
             const diffMs = date.getTime() - now.getTime();
             const diffMinutes = diffMs / (1000 * 60);
 
             if (diffMs < 0) {
                 row.style.backgroundColor = '#ffebee';
-                console.log("[SLA Color] Строка окрашена в красный (просрочено):", text);
             } else if (diffMinutes < 60*24) {
                 row.style.backgroundColor = '#fff8e1';
-                console.log("[SLA Color] Строка окрашена в желтый (менее 24 часов):", text);
-            } else {
-                row.style.backgroundColor = '';
             }
         });
 
@@ -629,40 +454,29 @@ function colorDueDateRows() {
     });
 }
 
-// --- Функция для изменения ширины столбцов (ресайзера) ---
+// --- Ресайзеры таблиц с правильным отображением текста ---
 function makeTableResizable(table) {
     if (table.hasAttribute(DATA_ENHANCED_RESIZE)) {
-        console.log("[Resizer] Таблица уже обработана для ресайзера, пропускаем:", table);
         return;
     }
 
-    console.log("[Resizer] Обработка таблицы для ресайзера:", table);
-
     const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
     if (!headerRow) {
-        console.log("[Resizer] Строка заголовков не найдена.");
         return;
     }
 
     const headers = Array.from(headerRow.querySelectorAll('th, td'));
     if (headers.length <= 1) {
-        console.log("[Resizer] Недостаточно столбцов для ресайзера.");
         return;
     }
-
-    // Временно отключаем observer
-    observer.disconnect();
 
     try {
         table.setAttribute(DATA_ENHANCED_RESIZE, 'true');
 
-        // Проверяем, не добавлены ли уже ресайзеры
         if (table.querySelector('.resizer-container')) {
-            console.log("[Resizer] Ресайзеры уже добавлены, пропускаем");
             return;
         }
 
-        // Создаем контейнер для ресайзеров
         const resizerContainer = document.createElement('div');
         resizerContainer.className = 'resizer-container';
         resizerContainer.style.cssText = `
@@ -677,6 +491,9 @@ function makeTableResizable(table) {
 
         table.style.position = 'relative';
         table.appendChild(resizerContainer);
+
+        // Сначала настраиваем стили для ячеек
+        optimizeTableCells(table);
 
         headers.forEach((header, index) => {
             if (index === headers.length - 1) return;
@@ -696,7 +513,6 @@ function makeTableResizable(table) {
                 transition: background-color 0.2s;
             `;
 
-            // Начальная позиция
             const updateResizerPosition = () => {
                 const headerRect = header.getBoundingClientRect();
                 const tableRect = table.getBoundingClientRect();
@@ -704,257 +520,42 @@ function makeTableResizable(table) {
                 resizer.style.left = leftPosition + 'px';
             };
 
-            // Устанавливаем начальную позицию с задержкой
             setTimeout(updateResizerPosition, 0);
-
-            // Добавляем обработчик для ресайзинга
             setupResizerHandlers(resizer, header, headers, index, table);
-
             resizerContainer.appendChild(resizer);
         });
 
-        // Добавляем стили один раз
-        if (!document.head.querySelector('#resizer-styles')) {
-            const style = document.createElement('style');
-            style.id = 'resizer-styles';
-            style.textContent = `
-                .table-resizer:hover {
-                    background-color: rgba(33, 150, 243, 0.3) !important;
-                }
-
-                .table-resizer.resizing {
-                    background-color: rgba(33, 150, 243, 0.5) !important;
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-    } finally {
-        // Включаем observer обратно
-        setTimeout(() => {
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true,
-                attributes: false,
-                characterData: false
-            });
-        }, 100);
+    } catch (error) {
+        console.error("[Resizer] Ошибка при создании ресайзеров:", error);
     }
 }
 
-// --- Функция для обновления позиций ресайзеров ---
-function updateResizerPositions() {
-    document.querySelectorAll('table[data-enhanced-resize="true"]').forEach(table => {
-        const resizerContainer = table.querySelector('.resizer-container');
-        if (!resizerContainer) return;
+// Оптимизация отображения ячеек
+function optimizeTableCells(table) {
+    const allCells = table.querySelectorAll('th, td');
+    allCells.forEach(cell => {
+        // Устанавливаем правильные стили для предотвращения переноса
+        cell.style.whiteSpace = 'nowrap';
+        cell.style.overflow = 'hidden';
+        cell.style.textOverflow = 'ellipsis';
+        cell.style.maxWidth = '500px'; // Максимальная ширина по умолчанию
 
-        const headers = Array.from(table.querySelectorAll('thead th, thead td'));
-        const resizers = resizerContainer.querySelectorAll('.table-resizer');
+        // Очищаем возможные мешающие стили
+        cell.style.wordBreak = 'normal';
+        cell.style.wordWrap = 'normal';
+        cell.style.hyphens = 'none';
 
-        headers.forEach((header, index) => {
-            if (index >= headers.length - 1) return;
-
-            const resizer = resizers[index];
-            if (!resizer) return;
-
-            const headerRect = header.getBoundingClientRect();
-            const tableRect = table.getBoundingClientRect();
-            const leftPosition = (headerRect.right - tableRect.left) - 5;
-            resizer.style.left = leftPosition + 'px';
+        // Обрабатываем вложенные элементы
+        const innerElements = cell.querySelectorAll('div, span, p');
+        innerElements.forEach(el => {
+            el.style.whiteSpace = 'nowrap';
+            el.style.overflow = 'hidden';
+            el.style.textOverflow = 'ellipsis';
+            el.style.maxWidth = '100%';
+            el.style.display = 'block';
         });
     });
 }
-// --- Функция для сброса флагов ---
-function resetEnhancedFlags() {
-    document.querySelectorAll(`[${DATA_ENHANCED_COLOR}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_COLOR));
-    document.querySelectorAll(`[${DATA_ENHANCED_RESIZE}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_RESIZE));
-}
-
-// --- Обрабатываем все НЕОБРАБОТАННЫЕ таблицы на странице ---
-function enhanceAllTables() {
-    console.log("[Main] Запуск enhanceAllTables...");
-    resetEnhancedFlags();
-
-    document.querySelectorAll('table').forEach(table => {
-        addHistoryColumn(table);
-        colorDueDateRows();
-        makeTableResizable(table);
-    });
-}
-
-// --- Основной запуск ---
-async function init() {
-    console.log("[Main] Инициализация плагина...");
-
-    await loadSettings();
-    toggleAutoRefresh();
-    enhanceAllTables();
-
-    if (document.readyState === 'complete') {
-        console.log("[Main] Страница уже загружена, повторный запуск обработки...");
-        enhanceAllTables();
-    } else {
-        console.log("[Main] Ожидание загрузки страницы...");
-        window.addEventListener('load', () => {
-            enhanceAllTables();
-        }, { once: true });
-    }
-
-    const observer = new MutationObserver((mutationsList) => {
-        let shouldUpdate = false;
-        for (let mutation of mutationsList) {
-            if (mutation.type === 'childList') {
-                for (let node of mutation.addedNodes) {
-                    if (node.nodeType === 1) {
-                        if (node.tagName === 'TABLE' || node.querySelector && (node.querySelector('tr[data-test="table-row"]') || node.querySelector('th, td'))) {
-                            shouldUpdate = true;
-                            break;
-                        }
-                    }
-                }
-                for (let node of mutation.removedNodes) {
-                    if (node.nodeType === 1) {
-                        if (node.tagName === 'TABLE' || node.querySelector && (node.querySelector('tr[data-test="table-row"]') || node.querySelector('th, td'))) {
-                            shouldUpdate = true;
-                            break;
-                        }
-                    }
-                }
-                if (shouldUpdate) break;
-            }
-        }
-        if (shouldUpdate) {
-            console.log("[Main] Обнаружены изменения в DOM (таблицы), запуск обработки...");
-            setTimeout(enhanceAllTables, 200);
-        }
-    });
-
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-}
-
-// Запускаем инициализацию
-if (document.readyState === 'loading') {
-    console.log("[Main] Документ ещё загружается...");
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    console.log("[Main] Документ готов, запуск инициализации...");
-    init();
-}
-
-// --- Функция для сброса флагов ---
-function resetEnhancedFlags() {
-    document.querySelectorAll(`[${DATA_ENHANCED_COLOR}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_COLOR));
-    document.querySelectorAll(`[${DATA_ENHANCED_RESIZE}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_RESIZE));
-}
-
-// --- Обрабатываем все НЕОБРАБОТАННЫЕ таблицы на странице ---
-// Добавьте глобальный флаг
-let isEnhancingTables = false;
-let observerDebounceTimer = null;
-
-// Обновите функцию enhanceAllTables с защитой от рекурсии
-function enhanceAllTables() {
-    if (isEnhancingTables) {
-        console.log("[Main] Уже выполняется обработка таблиц, пропускаем...");
-        return;
-    }
-
-    console.log("[Main] Запуск enhanceAllTables...");
-    isEnhancingTables = true;
-
-    try {
-        resetEnhancedFlags();
-        document.querySelectorAll('table').forEach(table => {
-            addHistoryColumn(table);
-            colorDueDateRows();
-            makeTableResizable(table);
-        });
-
-        setTimeout(updateResizerPositions, 100);
-    } finally {
-        // Снимаем флаг после завершения с небольшой задержкой
-        setTimeout(() => {
-            isEnhancingTables = false;
-            console.log("[Main] Обработка таблиц завершена");
-        }, 50);
-    }
-}
-
-// Обновленный MutationObserver
-const observer = new MutationObserver((mutationsList) => {
-    // Игнорируем изменения, если мы сами обрабатываем таблицы
-    if (isEnhancingTables) return;
-
-    // Проверяем, действительно ли изменения касаются таблиц
-    let shouldUpdate = false;
-
-    for (let mutation of mutationsList) {
-        // Игнорируем изменения в наших собственных элементах
-        if (mutation.target.classList?.contains('table-resizer') ||
-            mutation.target.classList?.contains('resizer-container') ||
-            mutation.target.id === 'history-panel') {
-            continue;
-        }
-
-        // Игнорируем изменения стилей и классов (они часто триггерятся нашим кодом)
-        if (mutation.type === 'attributes' &&
-            (mutation.attributeName === 'style' ||
-             mutation.attributeName === 'class')) {
-            continue;
-        }
-
-        // Проверяем только добавление/удаление узлов
-        if (mutation.type === 'childList') {
-            for (let node of mutation.addedNodes) {
-                if (node.nodeType === 1) { // Element node
-                    // Проверяем только существенные изменения
-                    if (node.tagName === 'TABLE' ||
-                        (node.querySelector && node.querySelector('table')) ||
-                        (node.classList && node.classList.contains('src-components-groupedTable'))) {
-                        shouldUpdate = true;
-                        break;
-                    }
-                }
-            }
-
-            for (let node of mutation.removedNodes) {
-                if (node.nodeType === 1) { // Element node
-                    if (node.tagName === 'TABLE' ||
-                        (node.querySelector && node.querySelector('table'))) {
-                        shouldUpdate = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (shouldUpdate) break;
-    }
-
-    if (shouldUpdate) {
-        // Дебаунс - ждем, пока изменения устоятся
-        if (observerDebounceTimer) {
-            clearTimeout(observerDebounceTimer);
-        }
-
-        observerDebounceTimer = setTimeout(() => {
-            console.log("[Main] Обнаружены существенные изменения в DOM, запуск обработки...");
-            enhanceAllTables();
-        }, 300); // Увеличил задержку
-    }
-});
-
-// Настройка observer с более специфичными параметрами
-observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: false, // Отключаем отслеживание атрибутов
-    attributeFilter: [], // Пустой фильтр = не отслеживаем атрибуты
-    characterData: false // Не отслеживаем изменения текста
-});
 
 function setupResizerHandlers(resizer, header, headers, index, table) {
     let isResizing = false;
@@ -991,8 +592,8 @@ function setupResizerHandlers(resizer, header, headers, index, table) {
             if (!isResizing) return;
 
             const dx = moveEvent.clientX - startX;
-            let newWidthCurrent = Math.max(20, startWidthCurrent + dx);
-            let newWidthNext = Math.max(20, startWidthNext - dx);
+            let newWidthCurrent = Math.max(30, startWidthCurrent + dx); // Минимум 30px
+            let newWidthNext = Math.max(30, startWidthNext - dx);
 
             // Применяем новые ширины
             currentColumnCells.forEach(cell => {
@@ -1010,15 +611,14 @@ function setupResizerHandlers(resizer, header, headers, index, table) {
             // Обновляем позицию текущего ресайзера
             resizer.style.left = (startWidthCurrent + dx - 5) + 'px';
 
-            // Обновляем текст в ячейках
-            updateCellContentVisibility([...currentColumnCells, ...nextColumnCells]);
+            // Обновляем отображение текста
+            updateCellTextVisibility([...currentColumnCells, ...nextColumnCells]);
         };
 
         const onMouseUp = () => {
             isResizing = false;
             resizer.classList.remove('resizing');
 
-            // Обновляем все ресайзеры после завершения
             setTimeout(() => {
                 updateAllResizerPositions(table);
             }, 10);
@@ -1029,6 +629,32 @@ function setupResizerHandlers(resizer, header, headers, index, table) {
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+    });
+}
+
+// Обновление видимости текста при ресайзе
+function updateCellTextVisibility(cells) {
+    cells.forEach(cell => {
+        // Для узких колонок - обрезаем текст
+        if (cell.offsetWidth < 100) {
+            cell.style.textOverflow = 'ellipsis';
+            cell.style.overflow = 'hidden';
+            cell.style.whiteSpace = 'nowrap';
+        } else {
+            // Для широких колонок - можно показывать больше
+            cell.style.textOverflow = 'ellipsis';
+            cell.style.overflow = 'hidden';
+            cell.style.whiteSpace = 'nowrap';
+        }
+
+        // Обрабатываем вложенные элементы
+        const innerElements = cell.querySelectorAll('div, span, p');
+        innerElements.forEach(el => {
+            el.style.textOverflow = 'ellipsis';
+            el.style.overflow = 'hidden';
+            el.style.whiteSpace = 'nowrap';
+            el.style.maxWidth = '100%';
+        });
     });
 }
 
@@ -1052,25 +678,13 @@ function updateAllResizerPositions(table) {
     });
 }
 
-function updateCellContentVisibility(cells) {
-    cells.forEach(cell => {
-        const contentDiv = cell.querySelector('.src-components-groupedTable-cellDescription-___styles-module__content___wrzOw');
-        if (contentDiv) {
-            const containerDiv = contentDiv.querySelector('.src-components-groupedTable-cellDescription-___styles-module__container___u5dbD');
-            if (containerDiv) {
-                containerDiv.style.cssText = `
-                    overflow: visible !important;
-                    white-space: normal !important;
-                    text-overflow: clip !important;
-                    word-break: break-word !important;
-                    max-width: none !important;
-                `;
-            }
-        }
-    });
+// --- Сброс флагов ---
+function resetEnhancedFlags() {
+    document.querySelectorAll(`[${DATA_ENHANCED_COLOR}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_COLOR));
+    document.querySelectorAll(`[${DATA_ENHANCED_RESIZE}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_RESIZE));
 }
 
-// Добавьте декоратор для предотвращения повторных вызовов
+// --- Дебаунс функция ---
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -1083,65 +697,108 @@ function debounce(func, wait) {
     };
 }
 
-// Оберните enhanceAllTables в debounce
+// --- Обработка всех таблиц ---
+function enhanceAllTables() {
+    if (isEnhancingTables) {
+        return;
+    }
+
+    console.log("[Main] Запуск enhanceAllTables...");
+    isEnhancingTables = true;
+
+    try {
+        resetEnhancedFlags();
+        document.querySelectorAll('table').forEach(table => {
+            addHistoryColumn(table);
+            colorDueDateRows();
+            makeTableResizable(table);
+        });
+
+        setTimeout(updateResizerPositions, 100);
+    } finally {
+        setTimeout(() => {
+            isEnhancingTables = false;
+        }, 50);
+    }
+}
+
 const debouncedEnhanceAllTables = debounce(enhanceAllTables, 500);
 
-// В MutationObserver используйте debounced версию
-observerDebounceTimer = setTimeout(() => {
-    console.log("[Main] Обнаружены существенные изменения в DOM, запуск обработки...");
-    debouncedEnhanceAllTables();
-}, 300);
+// --- MutationObserver ---
+const observer = new MutationObserver((mutationsList) => {
+    if (isEnhancingTables) return;
 
-// --- Основной запуск ---
+    let shouldUpdate = false;
+
+    for (let mutation of mutationsList) {
+        if (mutation.target.classList?.contains('table-resizer') ||
+            mutation.target.classList?.contains('resizer-container') ||
+            mutation.target.id === 'history-panel') {
+            continue;
+        }
+
+        if (mutation.type === 'childList') {
+            for (let node of mutation.addedNodes) {
+                if (node.nodeType === 1) {
+                    if (node.tagName === 'TABLE' ||
+                        (node.querySelector && node.querySelector('table'))) {
+                        shouldUpdate = true;
+                        break;
+                    }
+                }
+            }
+
+            for (let node of mutation.removedNodes) {
+                if (node.nodeType === 1) {
+                    if (node.tagName === 'TABLE' ||
+                        (node.querySelector && node.querySelector('table'))) {
+                        shouldUpdate = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (shouldUpdate) break;
+    }
+
+    if (shouldUpdate) {
+        if (observerDebounceTimer) {
+            clearTimeout(observerDebounceTimer);
+        }
+
+        observerDebounceTimer = setTimeout(() => {
+            console.log("[Main] Обнаружены изменения в DOM, запуск обработки...");
+            debouncedEnhanceAllTables();
+        }, 300);
+    }
+});
+
+// --- Инициализация ---
 async function init() {
-    console.log("[Main] Инициализация плагина...");
+    console.log("[Main] Инициализация...");
 
     await loadSettings();
     toggleAutoRefresh();
     enhanceAllTables();
 
-    if (document.readyState === 'complete') {
-        console.log("[Main] Страница уже загружена, повторный запуск обработки...");
-        enhanceAllTables();
-    } else {
-        console.log("[Main] Ожидание загрузки страницы...");
-        window.addEventListener('load', () => {
-            enhanceAllTables();
-        }, { once: true });
-    }
+    // Настройка observer
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+        characterData: false
+    });
 
+    // Обработчики событий
     window.addEventListener('resize', () => {
         setTimeout(updateResizerPositions, 100);
     });
-
-    const observer = new MutationObserver((mutationsList) => {
-    let shouldUpdate = false;
-    for (let mutation of mutationsList) {
-        if (mutation.type === 'childList' || mutation.type === 'attributes') {
-            shouldUpdate = true;
-            break;
-        }
-    }
-    if (shouldUpdate) {
-        console.log("[Main] Обнаружены изменения в DOM, запуск обработки...");
-        setTimeout(() => {
-            enhanceAllTables();
-            updateResizerPositions();
-        }, 200);
-    }
-});
-
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
 }
 
-// Запускаем инициализацию
+// Запуск
 if (document.readyState === 'loading') {
-    console.log("[Main] Документ ещё загружается...");
     document.addEventListener('DOMContentLoaded', init);
 } else {
-    console.log("[Main] Документ готов, запуск инициализации...");
     init();
 }

@@ -1,127 +1,152 @@
 // activity_fetcher.js
 console.log("[ActivityFetcher] Запущен на странице:", window.location.href);
 
-// Функция для извлечения и отправки блока активности
-function extractAndSendActivity() {
-    const activityBox = document.getElementById('activity-box');
-    if (activityBox && activityBox.children.length > 0) { // Проверяем, что внутри есть контент
-        console.log("[ActivityFetcher] Найден #activity-box с контентом, длина HTML:", activityBox.outerHTML.length);
-        const activityHTML = activityBox.outerHTML;
+// Обработчик сообщений для извлечения активности
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "extractActivity") {
+    console.log("[ActivityFetcher] Получен запрос на извлечение активности, ID:", request.requestId);
 
-        chrome.runtime.sendMessage({
-            action: "activityData",
-            html: activityHTML
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                console.error("[ActivityFetcher] Ошибка отправки данных:", chrome.runtime.lastError);
-            } else {
-                console.log("[ActivityFetcher] Данные отправлены, ответ:"// activity_fetcher.js
-console.log("[ActivityFetcher] Запущен на странице:", window.location.href);
+    // Ждем дополнительное время для динамического контента
+    const waitTime = document.readyState === 'complete' ? 2000 : 4000;
 
-// Функция для извлечения и отправки блока активности
-function extractAndSendActivity() {
-    const activityBox = document.getElementById('activity-box');
-    if (activityBox && activityBox.children.length > 0) { // Проверяем, что внутри есть контент
-        console.log("[ActivityFetcher] Найден #activity-box с контентом, длина HTML:", activityBox.outerHTML.length);
-        const activityHTML = activityBox.outerHTML;
-
-        chrome.runtime.sendMessage({
-            action: "activityData",
-            html: activityHTML
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                console.error("[ActivityFetcher] Ошибка отправки данных:", chrome.runtime.lastError);
-            } else {
-                console.log("[ActivityFetcher] Данные отправлены, ответ:", response);
-                window.close();
-            }
-        });
-    } else {
-        console.log("[ActivityFetcher] #activity-box не найден или пуст, жду...");
-    }
-}
-
-// Ждем полной загрузки DOM
-if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', () => {
-        console.log("[ActivityFetcher] DOMContentLoaded сработал");
-        setTimeout(() => {
-            extractAndSendActivity();
-        }, 2000); // Ждем 2 секунды после DOM загрузки, чтобы JS мог выполниться
-    });
-} else {
-    // Если DOM уже загружен, ждем немного и проверяем
     setTimeout(() => {
-        extractAndSendActivity();
-    }, 2000);
-}
+      extractAndSendActivity(sendResponse, request.requestId);
+    }, waitTime);
 
-// И устанавливаем MutationObserver на случай, если элемент появится позже
-const observer = new MutationObserver((mutationsList) => {
-    for (let mutation of mutationsList) {
-        if (mutation.type === 'childList' || mutation.type === 'subtree') {
-            const activityBox = document.getElementById('activity-box');
-            if (activityBox && activityBox.children.length > 0) {
-                console.log("[ActivityFetcher] #activity-box найден через MutationObserver с контентом");
-                observer.disconnect();
-                extractAndSendActivity();
-                return;
-            }
-        }
-    }
+    return true;
+  }
+  return false;
 });
 
-// Начинаем наблюдение за изменениями в body
-observer.observe(document.body, { childList: true, subtree: true });
+// Функция для извлечения и отправки блока активности
+function extractAndSendActivity(sendResponse, requestId) {
+    console.log("[ActivityFetcher] Поиск блока активности...");
 
-// Устанавливаем таймаут на 30 секунд, чтобы не висеть вечно
-setTimeout(() => {
-    console.log("[ActivityFetcher] Таймаут 30 секунд, закрываю вкладку");
-    window.close();
-}, 30000);, response);
-                window.close();
-            }
-        });
+    // Пробуем разные стратегии поиска
+    let activityHTML = findActivityContent();
+
+    if (!activityHTML) {
+        console.log("[ActivityFetcher] Блок активности не найден, пробую альтернативные методы...");
+        activityHTML = findAlternativeContent();
+    }
+
+    if (activityHTML) {
+        console.log("[ActivityFetcher] Отправляю HTML активности, длина:", activityHTML.length);
+        sendResponse({ html: activityHTML, requestId: requestId });
     } else {
-        console.log("[ActivityFetcher] #activity-box не найден или пуст, жду...");
+        console.log("[ActivityFetcher] Не удалось найти активность");
+        sendResponse({ html: "<div>Активность не найдена на странице</div>", requestId: requestId });
     }
 }
 
-// Ждем полной загрузки DOM
-if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', () => {
-        console.log("[ActivityFetcher] DOMContentLoaded сработал");
-        setTimeout(() => {
-            extractAndSendActivity();
-        }, 2000); // Ждем 2 секунды после DOM загрузки, чтобы JS мог выполниться
-    });
-} else {
-    // Если DOM уже загружен, ждем немного и проверяем
-    setTimeout(() => {
-        extractAndSendActivity();
-    }, 2000);
-}
+// Основной поиск активности
+function findActivityContent() {
+    const selectors = [
+        '#activity-box',
+        '.activity-history',
+        '.history-container',
+        '.timeline',
+        '.comments-section',
+        '.activity-panel',
+        '.activity-stream',
+        '.activity-list',
+        '[data-testid*="activity"]',
+        '[class*="activity" i]', // case insensitive
+        '[id*="history" i]',
+        '[class*="history" i]',
+        '[id*="comment" i]',
+        '[class*="comment" i]',
+        '[id*="timeline" i]',
+        '[class*="timeline" i]'
+    ];
 
-// И устанавливаем MutationObserver на случай, если элемент появится позже
-const observer = new MutationObserver((mutationsList) => {
-    for (let mutation of mutationsList) {
-        if (mutation.type === 'childList' || mutation.type === 'subtree') {
-            const activityBox = document.getElementById('activity-box');
-            if (activityBox && activityBox.children.length > 0) {
-                console.log("[ActivityFetcher] #activity-box найден через MutationObserver с контентом");
-                observer.disconnect();
-                extractAndSendActivity();
-                return;
+    for (const selector of selectors) {
+        try {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+                console.log(`[ActivityFetcher] Найден элемент по селектору "${selector}":`, elements.length);
+
+                // Ищем элемент с наибольшим количеством контента
+                let bestElement = elements[0];
+                let maxLength = bestElement.textContent.length;
+
+                for (let i = 1; i < elements.length; i++) {
+                    const length = elements[i].textContent.length;
+                    if (length > maxLength) {
+                        bestElement = elements[i];
+                        maxLength = length;
+                    }
+                }
+
+                if (maxLength > 200) { // Достаточно контента
+                    const clonedElement = bestElement.cloneNode(true);
+                    cleanElement(clonedElement);
+                    return clonedElement.outerHTML;
+                }
             }
+        } catch (e) {
+            console.warn(`[ActivityFetcher] Ошибка при поиске по селектору ${selector}:`, e);
         }
     }
-});
 
-// Начинаем наблюдение за изменениями в body
-observer.observe(document.body, { childList: true, subtree: true });
+    return null;
+}
 
-// Устанавливаем таймаут на 30 секунд, чтобы не висеть вечно
-setTimeout(() => {
-    console.log("[ActivityFetcher] Таймаут 30 секунд, закрываю вкладку");
-    window.close();
-}, 30000);
+// Альтернативный поиск
+function findAlternativeContent() {
+    // Ищем любой контейнер с большим количеством текста
+    const allContainers = document.querySelectorAll('div, section, article, main');
+    let bestContainer = null;
+    let maxTextLength = 0;
+
+    allContainers.forEach(container => {
+        const textLength = container.textContent.length;
+        if (textLength > 500 && textLength > maxTextLength) {
+            // Проверяем что это не основной контент страницы
+            const rect = container.getBoundingClientRect();
+            if (rect.width > 300 && rect.height > 200) {
+                bestContainer = container;
+                maxTextLength = textLength;
+            }
+        }
+    });
+
+    if (bestContainer) {
+        console.log("[ActivityFetcher] Найден альтернативный контейнер с текстом длиной:", maxTextLength);
+        const clonedElement = bestContainer.cloneNode(true);
+        cleanElement(clonedElement);
+        return clonedElement.outerHTML;
+    }
+
+    return null;
+}
+
+// Очистка элемента от лишнего
+function cleanElement(element) {
+    // Удаляем скрипты, стили и интерактивные элементы
+    const unwanted = element.querySelectorAll(
+        'script, style, link, meta, input, button, form, textarea, select, ' +
+        'iframe, object, embed, audio, video, canvas, svg, ' +
+        '[onclick], [onload], [onmouseover], [on*]'
+    );
+    unwanted.forEach(el => el.remove());
+
+    // Удаляем пустые элементы
+    const emptyElements = element.querySelectorAll('div, span, p, td, th, li');
+    emptyElements.forEach(el => {
+        if (el.textContent.trim() === '' && el.children.length === 0) {
+            el.remove();
+        }
+    });
+
+    return element;
+}
+
+// Если страница загружена, выводим информацию
+if (document.readyState === 'complete') {
+    console.log("[ActivityFetcher] Страница полностью загружена, готов к извлечению");
+} else {
+    window.addEventListener('load', () => {
+        console.log("[ActivityFetcher] Страница загружена (load event)");
+    });
+}
