@@ -1,152 +1,147 @@
-// activity_fetcher.js
+// activity_fetcher.js - ИСПОЛЬЗУЕМ ПОДХОД С КОПИРОВАНИЕМ СТИЛЕЙ
 console.log("[ActivityFetcher] Запущен на странице:", window.location.href);
 
-// Обработчик сообщений для извлечения активности
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "extractActivity") {
-    console.log("[ActivityFetcher] Получен запрос на извлечение активности, ID:", request.requestId);
-
-    // Ждем дополнительное время для динамического контента
-    const waitTime = document.readyState === 'complete' ? 2000 : 4000;
+    console.log("[ActivityFetcher] Получен запрос на извлечение активности");
 
     setTimeout(() => {
-      extractAndSendActivity(sendResponse, request.requestId);
-    }, waitTime);
+      extractActivityWithStyles(request.requestId, sendResponse);
+    }, 3000);
 
     return true;
   }
   return false;
 });
 
-// Функция для извлечения и отправки блока активности
-function extractAndSendActivity(sendResponse, requestId) {
-    console.log("[ActivityFetcher] Поиск блока активности...");
+function extractActivityWithStyles(requestId, sendResponse) {
+  try {
+    const activityElement = document.querySelector('#activity-feed');
 
-    // Пробуем разные стратегии поиска
-    let activityHTML = findActivityContent();
-
-    if (!activityHTML) {
-        console.log("[ActivityFetcher] Блок активности не найден, пробую альтернативные методы...");
-        activityHTML = findAlternativeContent();
+    if (!activityElement) {
+      sendBack("<div style='padding:20px;color:#666;'>#activity-feed не найден</div>", requestId, sendResponse);
+      return;
     }
 
-    if (activityHTML) {
-        console.log("[ActivityFetcher] Отправляю HTML активности, длина:", activityHTML.length);
-        sendResponse({ html: activityHTML, requestId: requestId });
-    } else {
-        console.log("[ActivityFetcher] Не удалось найти активность");
-        sendResponse({ html: "<div>Активность не найдена на странице</div>", requestId: requestId });
-    }
-}
+    // Создаем временный div для копирования
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'position: absolute; left: -9999px; top: -9999px;';
 
-// Основной поиск активности
-function findActivityContent() {
-    const selectors = [
-        '#activity-box',
-        '.activity-history',
-        '.history-container',
-        '.timeline',
-        '.comments-section',
-        '.activity-panel',
-        '.activity-stream',
-        '.activity-list',
-        '[data-testid*="activity"]',
-        '[class*="activity" i]', // case insensitive
-        '[id*="history" i]',
-        '[class*="history" i]',
-        '[id*="comment" i]',
-        '[class*="comment" i]',
-        '[id*="timeline" i]',
-        '[class*="timeline" i]'
-    ];
+    // Клонируем элемент и всех его детей
+    const clone = activityElement.cloneNode(true);
 
-    for (const selector of selectors) {
-        try {
-            const elements = document.querySelectorAll(selector);
-            if (elements.length > 0) {
-                console.log(`[ActivityFetcher] Найден элемент по селектору "${selector}":`, elements.length);
+    // 1. Удаляем скрипты
+    const scripts = clone.querySelectorAll('script, iframe, link[rel="stylesheet"], style');
+    scripts.forEach(el => el.remove());
 
-                // Ищем элемент с наибольшим количеством контента
-                let bestElement = elements[0];
-                let maxLength = bestElement.textContent.length;
+    // 2. Добавляем элемент в DOM чтобы стили применились
+    tempDiv.appendChild(clone);
+    document.body.appendChild(tempDiv);
 
-                for (let i = 1; i < elements.length; i++) {
-                    const length = elements[i].textContent.length;
-                    if (length > maxLength) {
-                        bestElement = elements[i];
-                        maxLength = length;
-                    }
-                }
+    // 3. Force reflow для применения стилей
+    clone.offsetHeight;
 
-                if (maxLength > 200) { // Достаточно контента
-                    const clonedElement = bestElement.cloneNode(true);
-                    cleanElement(clonedElement);
-                    return clonedElement.outerHTML;
-                }
-            }
-        } catch (e) {
-            console.warn(`[ActivityFetcher] Ошибка при поиске по селектору ${selector}:`, e);
-        }
-    }
+    // 4. Собираем все примененные стили
+    collectAndApplyStyles(clone);
 
-    return null;
-}
+    // 5. Удаляем из DOM
+    document.body.removeChild(tempDiv);
 
-// Альтернативный поиск
-function findAlternativeContent() {
-    // Ищем любой контейнер с большим количеством текста
-    const allContainers = document.querySelectorAll('div, section, article, main');
-    let bestContainer = null;
-    let maxTextLength = 0;
+    // 6. Ограничиваем размеры картинок
+    const images = clone.querySelectorAll('img');
+    images.forEach(img => {
+      const style = window.getComputedStyle(img);
+      const width = parseInt(style.width) || img.naturalWidth || img.width;
+      const height = parseInt(style.height) || img.naturalHeight || img.height;
 
-    allContainers.forEach(container => {
-        const textLength = container.textContent.length;
-        if (textLength > 500 && textLength > maxTextLength) {
-            // Проверяем что это не основной контент страницы
-            const rect = container.getBoundingClientRect();
-            if (rect.width > 300 && rect.height > 200) {
-                bestContainer = container;
-                maxTextLength = textLength;
-            }
-        }
+      if (width > 300 || height > 200) {
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        img.style.maxHeight = '200px';
+      }
     });
 
-    if (bestContainer) {
-        console.log("[ActivityFetcher] Найден альтернативный контейнер с текстом длиной:", maxTextLength);
-        const clonedElement = bestContainer.cloneNode(true);
-        cleanElement(clonedElement);
-        return clonedElement.outerHTML;
-    }
+    // 7. Создаем финальный HTML
+    const wrapper = document.createElement('div');
+    wrapper.className = 'activity-copy-wrapper';
+    wrapper.style.cssText = 'max-width: 100%; overflow: auto;';
+    wrapper.appendChild(clone);
 
-    return null;
-}
+    const html = wrapper.outerHTML;
+    console.log("[ActivityFetcher] Отправляю HTML со стилями, длина:", html.length);
 
-// Очистка элемента от лишнего
-function cleanElement(element) {
-    // Удаляем скрипты, стили и интерактивные элементы
-    const unwanted = element.querySelectorAll(
-        'script, style, link, meta, input, button, form, textarea, select, ' +
-        'iframe, object, embed, audio, video, canvas, svg, ' +
-        '[onclick], [onload], [onmouseover], [on*]'
+    sendBack(html, requestId, sendResponse);
+
+  } catch (error) {
+    console.error("[ActivityFetcher] Ошибка:", error);
+    sendBack(
+      `<div style="padding:20px;background:#ffebee;color:#c62828;border-radius:4px;">
+        <strong>Ошибка:</strong> ${error.message}
+      </div>`,
+      requestId,
+      sendResponse
     );
-    unwanted.forEach(el => el.remove());
-
-    // Удаляем пустые элементы
-    const emptyElements = element.querySelectorAll('div, span, p, td, th, li');
-    emptyElements.forEach(el => {
-        if (el.textContent.trim() === '' && el.children.length === 0) {
-            el.remove();
-        }
-    });
-
-    return element;
+  }
 }
 
-// Если страница загружена, выводим информацию
-if (document.readyState === 'complete') {
-    console.log("[ActivityFetcher] Страница полностью загружена, готов к извлечению");
-} else {
-    window.addEventListener('load', () => {
-        console.log("[ActivityFetcher] Страница загружена (load event)");
-    });
+// Собираем и применяем стили
+function collectAndApplyStyles(element) {
+  const allStyles = new Set();
+
+  // Собираем стили из style элементов
+  document.querySelectorAll('style').forEach(styleEl => {
+    if (styleEl.textContent) {
+      allStyles.add(styleEl.textContent);
+    }
+  });
+
+  // Собираем inline стили элемента и его родителей
+  function collectElementStyles(el) {
+    if (el.style && el.style.cssText) {
+      const selector = getElementSelector(el);
+      if (selector) {
+        allStyles.add(`${selector} { ${el.style.cssText} }`);
+      }
+    }
+
+    if (el.parentElement && el.parentElement !== document.body) {
+      collectElementStyles(el.parentElement);
+    }
+  }
+
+  collectElementStyles(element);
+
+  // Создаем style элемент с собранными стилями
+  if (allStyles.size > 0) {
+    const styleEl = document.createElement('style');
+    styleEl.textContent = Array.from(allStyles).join('\n');
+    element.insertBefore(styleEl, element.firstChild);
+  }
+}
+
+// Получаем селектор для элемента
+function getElementSelector(element) {
+  if (element.id) {
+    return '#' + element.id;
+  }
+
+  if (element.className && typeof element.className === 'string') {
+    const classes = element.className.trim().split(/\s+/).filter(c => c);
+    if (classes.length > 0) {
+      return '.' + classes.join('.');
+    }
+  }
+
+  return null;
+}
+
+// Отправляем ответ
+function sendBack(html, requestId, sendResponse) {
+  chrome.runtime.sendMessage({
+    action: "extractedActivity",
+    html: html,
+    requestId: requestId
+  }, () => {
+    if (sendResponse) sendResponse({ success: true });
+  });
 }

@@ -1,135 +1,68 @@
-// background.js для Manifest V3
+// background.js - БЫСТРАЯ ВЕРСИЯ
 console.log("[Background] Service worker запущен");
 
-// Хранилище для временных данных активности
 let activityDataCache = new Map();
 
-// Обработчик сообщений
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log("[Background] Получено сообщение:", request.action, "от таба:", sender.tab?.id);
+  console.log("[Background] Получено сообщение:", request.action);
 
   if (request.action === "fetchActivity") {
-    console.log("[Background] Получен запрос на извлечение активности:", request.url);
+    console.log("[Background] Получен запрос на извлечение активности");
 
-    // Создаем уникальный ID для этого запроса
-    const requestId = request.requestId || Date.now() + Math.random();
+    const requestId = request.requestId || Date.now();
     activityDataCache.set(requestId, {
-      url: request.url,
       sourceTabId: sender.tab.id,
-      timestamp: Date.now(),
-      sendResponse: sendResponse
+      timestamp: Date.now()
     });
 
-    // Открываем новую вкладку для загрузки активности
+    // Сразу создаем вкладку без задержек
     chrome.tabs.create({
       url: request.url,
       active: false
     }).then((newTab) => {
-      console.log("[Background] Создана вкладка для получения активности, ID:", newTab.id);
+      console.log("[Background] Создана вкладка:", newTab.id);
 
-      // Обновляем кэш с ID новой вкладки
       const cachedData = activityDataCache.get(requestId);
       if (cachedData) {
         cachedData.fetchTabId = newTab.id;
         activityDataCache.set(requestId, cachedData);
       }
 
-      // Слушатель для обновлений вкладки
-      const onTabUpdate = (tabId, changeInfo, tab) => {
-        if (tabId === newTab.id) {
-          console.log("[Background] Обновление вкладки:", changeInfo.status);
+      // Сразу отвечаем что вкладка создана
+      sendResponse({ success: true, requestId: requestId });
 
-          if (changeInfo.status === 'complete') {
-            console.log("[Background] Вкладка полностью загружена, жду 5 секунд для JS...");
+      // НЕ ЖДЕМ 5 секунд! Отправляем запрос сразу
+      // Слушаем когда вкладка будет готова
+      const onTabReady = (tabId, changeInfo) => {
+        if (tabId === newTab.id && changeInfo.status === 'complete') {
+          console.log("[Background] Вкладка загружена, отправляю запрос на извлечение");
+          chrome.tabs.onUpdated.removeListener(onTabReady);
 
-            // Даем время на выполнение JavaScript и загрузку динамического контента
-            setTimeout(() => {
-              // Проверяем что вкладка еще существует
-              chrome.tabs.get(tabId).then(() => {
-                console.log("[Background] Отправляю сообщение для извлечения активности...");
-
-                chrome.tabs.sendMessage(tabId, {
-                  action: "extractActivity",
-                  requestId: requestId
-                }).then(response => {
-                  console.log("[Background] Получены данные активности, длина:", response?.html?.length || 0);
-
-                  // Закрываем временную вкладку
-                  chrome.tabs.remove(tabId).then(() => {
-                    console.log("[Background] Вкладка активности закрыта");
-                  }).catch(err => {
-                    console.warn("[Background] Не удалось закрыть вкладку:", err);
-                  });
-
-                  // Отправляем данные обратно в исходную вкладку
-                  const cachedRequest = activityDataCache.get(requestId);
-                  if (cachedRequest) {
-                    chrome.tabs.sendMessage(cachedRequest.sourceTabId, {
-                      action: "activityDataReceived",
-                      html: response.html || "<div>Нет данных активности</div>",
-                      requestId: requestId
-                    }).then(() => {
-                      console.log("[Background] Данные отправлены обратно в таб:", cachedRequest.sourceTabId);
-                    }).catch(error => {
-                      console.error("[Background] Ошибка отправки данных обратно:", error);
-                    });
-
-                    // Отправляем ответ на начальный запрос
-                    if (cachedRequest.sendResponse) {
-                      cachedRequest.sendResponse({ success: true, requestId: requestId });
-                    }
-
-                    // Очищаем кэш
-                    activityDataCache.delete(requestId);
-                  }
-
-                }).catch(error => {
-                  console.error("[Background] Ошибка получения данных от вкладки:", error);
-
-                  // Закрываем вкладку в случае ошибки
-                  chrome.tabs.remove(tabId).catch(() => {});
-
-                  const cachedRequest = activityDataCache.get(requestId);
-                  if (cachedRequest) {
-                    chrome.tabs.sendMessage(cachedRequest.sourceTabId, {
-                      action: "activityDataReceived",
-                      html: `<div>Ошибка извлечения активности: ${error.message}</div>`,
-                      requestId: requestId
-                    }).catch(() => {});
-
-                    if (cachedRequest.sendResponse) {
-                      cachedRequest.sendResponse({
-                        error: `Ошибка извлечения: ${error.message}`
-                      });
-                    }
-
-                    activityDataCache.delete(requestId);
-                  }
-                });
-
-              }).catch(error => {
-                console.error("[Background] Вкладка недоступна:", error);
-                cleanupRequest(requestId);
-              });
-
-            }, 5000); // Ждем 5 секунд для полной загрузки динамического контента
-
-            // Удаляем слушатель
-            chrome.tabs.onUpdated.removeListener(onTabUpdate);
-          }
+          // Ждем всего 500мс для динамического контента (вместо 5000мс!)
+          setTimeout(() => {
+            sendExtractRequest(requestId, newTab.id);
+          }, 500);
         }
       };
 
-      chrome.tabs.onUpdated.addListener(onTabUpdate);
+      chrome.tabs.onUpdated.addListener(onTabReady);
 
-      // Таймаут на случай если вкладка не загрузится
+      // Если вкладка уже загружена
+      if (newTab.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(onTabReady);
+        setTimeout(() => {
+          sendExtractRequest(requestId, newTab.id);
+        }, 500);
+      }
+
+      // Таймаут на случай проблем - сокращаем до 15 секунд
       setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(onTabUpdate);
-        cleanupRequest(requestId, newTab.id);
-      }, 45000); // 45 секунд таймаут
-
-      // Не отправляем ответ сразу, ждем завершения
-      return true;
+        chrome.tabs.onUpdated.removeListener(onTabReady);
+        if (activityDataCache.has(requestId)) {
+          console.log("[Background] Таймаут 15 секунд");
+          cleanupRequest(requestId, newTab.id);
+        }
+      }, 15000);
 
     }).catch((error) => {
       console.error("[Background] Ошибка при создании вкладки:", error);
@@ -137,65 +70,99 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       cleanupRequest(requestId);
     });
 
-    return true; // Сообщаем что ответ будет асинхронным
-  }
-
-  if (request.action === "extractedActivity") {
-    console.log("[Background] Получены извлеченные данные активности");
-    sendResponse({ success: true, html: request.html });
     return true;
   }
 
-  // Функция очистки запроса
-  function cleanupRequest(requestId, tabId = null) {
-    const cachedRequest = activityDataCache.get(requestId);
-    if (cachedRequest) {
-      if (tabId) {
-        chrome.tabs.remove(tabId).catch(() => {});
-      }
+  if (request.action === "extractedActivity") {
+    console.log("[Background] Получены данные активности, длина:", request.html?.length);
 
-      chrome.tabs.sendMessage(cachedRequest.sourceTabId, {
-        action: "activityDataReceived",
-        html: "<div>Таймаут загрузки активности (45 секунд)</div>",
-        requestId: requestId
-      }).catch(() => {});
-
-      if (cachedRequest.sendResponse) {
-        cachedRequest.sendResponse({ error: "Таймаут загрузки активности" });
-      }
-
-      activityDataCache.delete(requestId);
-    }
-  }
-
-  // Обработчик закрытия вкладок
-  chrome.tabs.onRemoved.addListener((tabId) => {
+    // Находим запрос
+    let foundRequestId = null;
     for (const [requestId, data] of activityDataCache.entries()) {
-      if (data.fetchTabId === tabId) {
-        console.log("[Background] Вкладка активности закрыта, очищаю запрос:", requestId);
-        cleanupRequest(requestId);
+      if (data.fetchTabId === sender.tab.id) {
+        foundRequestId = requestId;
         break;
       }
     }
-  });
 
-  console.log("[Background] Неизвестное действие:", request.action);
-  sendResponse({ error: "Unknown action" });
+    if (foundRequestId) {
+      const requestData = activityDataCache.get(foundRequestId);
+
+      // Сразу закрываем вкладку
+      chrome.tabs.remove(sender.tab.id).catch(() => {});
+
+      // Сразу отправляем данные обратно
+      if (requestData && requestData.sourceTabId) {
+        console.log("[Background] Отправляю данные обратно в таб:", requestData.sourceTabId);
+
+        chrome.tabs.sendMessage(requestData.sourceTabId, {
+          action: "activityDataReceived",
+          html: request.html,
+          requestId: foundRequestId
+        }).catch(error => {
+          console.error("[Background] Ошибка отправки данных:", error);
+        });
+      }
+
+      activityDataCache.delete(foundRequestId);
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
   return false;
 });
 
-// Инициализация при установке
-chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === "install") {
-    console.log("[Background] Расширение установлено");
+function sendExtractRequest(requestId, tabId) {
+  console.log(`[Background] Отправляю запрос на извлечение вкладке ${tabId}`);
 
-    chrome.storage.sync.set({
-      autoRefreshEnabled: false,
-      autoRefreshInterval: 10
-    }).then(() => {
-      console.log("[Background] Настройки по умолчанию установлены");
-    }).catch((error) => {
-      console.error("[Background] Ошибка установки настроек:", error);
-    });
+  chrome.tabs.sendMessage(tabId, {
+    action: "extractActivity",
+    requestId: requestId
+  }).then(() => {
+    console.log(`[Background] Запрос отправлен вкладке ${tabId}`);
+  }).catch(error => {
+    console.error(`[Background] Ошибка отправки вкладке ${tabId}:`, error);
+
+    // Быстрая повторная попытка через 200мс
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tabId, {
+        action: "extractActivity",
+        requestId: requestId
+      }).catch(retryError => {
+        console.error(`[Background] Повторная ошибка:`, retryError);
+        cleanupRequest(requestId, tabId);
+      });
+    }, 200);
+  });
+}
+
+function cleanupRequest(requestId, tabId = null) {
+  const cachedRequest = activityDataCache.get(requestId);
+  if (cachedRequest) {
+    if (tabId) {
+      chrome.tabs.remove(tabId).catch(() => {});
+    }
+
+    if (cachedRequest.sourceTabId) {
+      chrome.tabs.sendMessage(cachedRequest.sourceTabId, {
+        action: "activityDataReceived",
+        html: "<div>Таймаут загрузки активности</div>",
+        requestId: requestId
+      }).catch(() => {});
+    }
+
+    activityDataCache.delete(requestId);
   }
-});
+}
+
+// Очистка старых записей
+setInterval(() => {
+  const now = Date.now();
+  for (const [requestId, data] of activityDataCache.entries()) {
+    if (now - data.timestamp > 30000) { // 30 секунд
+      cleanupRequest(requestId, data.fetchTabId);
+    }
+  }
+}, 10000);

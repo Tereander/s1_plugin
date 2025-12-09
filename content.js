@@ -216,10 +216,9 @@ async function fetchActivityFromUrlNew(url) {
 
         const requestId = Date.now() + Math.random();
 
-        // Добавляем слушатель для получения ответа
         const messageListener = (message) => {
             if (message.action === "activityDataReceived" && message.requestId === requestId) {
-                console.log('[Activity] Получены данные активности от background');
+                console.log('[Activity] Получены данные активности!');
                 chrome.runtime.onMessage.removeListener(messageListener);
                 activityRequests.delete(requestId);
 
@@ -232,7 +231,7 @@ async function fetchActivityFromUrlNew(url) {
         };
 
         chrome.runtime.onMessage.addListener(messageListener);
-        activityRequests.set(requestId, { resolve, reject, listener: messageListener });
+        activityRequests.set(requestId, { resolve, reject });
 
         chrome.runtime.sendMessage({
             action: "fetchActivity",
@@ -240,38 +239,31 @@ async function fetchActivityFromUrlNew(url) {
             requestId: requestId
         }, (response) => {
             if (chrome.runtime.lastError) {
-                console.error('[Activity] Ошибка отправки сообщения:', chrome.runtime.lastError);
+                console.error('[Activity] Ошибка отправки:', chrome.runtime.lastError);
                 chrome.runtime.onMessage.removeListener(messageListener);
                 activityRequests.delete(requestId);
                 reject(chrome.runtime.lastError);
                 return;
             }
 
-            if (response && response.error) {
-                console.error('[Activity] Ошибка от background:', response.error);
+            if (response && response.success) {
+                console.log('[Activity] Запрос принят, ожидание данных...');
+            } else if (response && response.error) {
                 chrome.runtime.onMessage.removeListener(messageListener);
                 activityRequests.delete(requestId);
                 reject(new Error(response.error));
-            } else if (response && response.success) {
-                console.log('[Activity] Запрос принят, ожидание данных... ID:', requestId);
-                // Ждем activityDataReceived через messageListener
-            } else {
-                console.error('[Activity] Неожиданный ответ от background:', response);
-                chrome.runtime.onMessage.removeListener(messageListener);
-                activityRequests.delete(requestId);
-                reject(new Error('Unexpected response from background'));
             }
         });
 
-        // Таймаут на случай если ответ не придет
+        // СОКРАЩАЕМ ТАЙМАУТ до 20 секунд (вместо 45)
         setTimeout(() => {
             if (activityRequests.has(requestId)) {
-                console.log('[Activity] Таймаут ожидания активности');
+                console.log('[Activity] Таймаут ожидания активности (20с)');
                 chrome.runtime.onMessage.removeListener(messageListener);
                 activityRequests.delete(requestId);
                 reject(new Error('Таймаут загрузки активности'));
             }
-        }, 45000); // 45 секунд
+        }, 20000); // 20 секунд
     });
 }
 
@@ -293,36 +285,121 @@ async function showActivity(url, clickedButton) {
 
     historyPanel.style.display = 'flex';
 
-    // Сразу показываем данные из таблицы (левая часть)
-    const taskDataHTML = extractTaskDataFromRow(clickedButton);
-    document.getElementById('task-data-content').innerHTML = taskDataHTML;
+    // Сразу показываем данные из таблицы
+    document.getElementById('task-data-content').innerHTML = extractTaskDataFromRow(clickedButton);
 
-    // Показываем заглушку в правой части
-    document.getElementById('activity-content').innerHTML = '<div>Загрузка активности (может занять до 30 секунд)...</div>';
+    // Показываем индикатор загрузки
+    document.getElementById('activity-content').innerHTML = '<div style="padding:10px;text-align:center;">Загрузка...</div>';
 
-    // Загружаем активность асинхронно
     try {
         const activityHTML = await fetchActivityFromUrlNew(url);
 
-        // Упрощенная очистка HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = activityHTML;
+        // Быстрая вставка
+        document.getElementById('activity-content').innerHTML = activityHTML;
 
-        // Удаляем лишние элементы
-        const unwanted = tempDiv.querySelectorAll('script, style, link, meta, input, button, form, textarea, select');
-        unwanted.forEach(el => el.remove());
+        // Быстрое добавление стилей
+        addFastStyles();
 
-        document.getElementById('activity-content').innerHTML = tempDiv.innerHTML;
-        console.log('[Activity] Активность загружена и отображена.');
+        console.log('[Activity] Активность загружена');
+
     } catch (error) {
-        console.error('[Activity] Ошибка при загрузке активности:', error);
+        console.error('[Activity] Ошибка:', error);
         document.getElementById('activity-content').innerHTML =
-            `<div style="color: red; padding: 20px; text-align: center;">
-                <strong>Ошибка загрузки активности:</strong><br>
-                ${error.message}<br><br>
-                Попробуйте снова или проверьте доступность страницы заявки.
+            `<div style="padding:15px;background:#ffebee;color:#c62828;">
+                ${error.message}
             </div>`;
     }
+}
+
+function addFastStyles() {
+    const styleId = 'activity-fast-styles';
+    let style = document.getElementById(styleId);
+
+    if (!style) {
+        style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            #activity-content { max-width: 100%; }
+            #activity-content img { max-width: 100% !important; height: auto !important; }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Добавление стилей для активности
+function addActivityStyles() {
+    const styleId = 'activity-panel-styles';
+
+    // Удаляем старые стили если есть
+    const oldStyle = document.getElementById(styleId);
+    if (oldStyle) oldStyle.remove();
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+        #activity-content {
+            font-family: inherit;
+            line-height: 1.5;
+            max-width: 100%;
+        }
+
+        #activity-content img {
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: 200px !important;
+        }
+
+        #activity-content video,
+        #activity-content iframe,
+        #activity-content audio {
+            max-width: 100% !important;
+            max-height: 300px !important;
+        }
+
+        #activity-content table {
+            width: 100% !important;
+            border-collapse: collapse;
+            margin: 8px 0;
+        }
+
+        #activity-content th,
+        #activity-content td {
+            border: 1px solid #e0e0e0;
+            padding: 6px 8px;
+            font-size: 13px;
+        }
+
+        #activity-content th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        /* Делаем прокрутку внутри панели */
+        .activity-section {
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .activity-section::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .activity-section::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .activity-section::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        .activity-section::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+    `;
+
+    document.head.appendChild(style);
 }
 
 // --- Столбец активности ---
@@ -675,6 +752,29 @@ function updateAllResizerPositions(table) {
         const tableRect = table.getBoundingClientRect();
         const leftPosition = (headerRect.right - tableRect.left) - 5;
         resizer.style.left = leftPosition + 'px';
+    });
+}
+
+// --- Обновление позиций ресайзеров (ДОБАВЬТЕ ЭТУ ФУНКЦИЮ ПЕРЕД enhanceAllTables) ---
+function updateResizerPositions() {
+    document.querySelectorAll('table[data-enhanced-resize="true"]').forEach(table => {
+        const resizerContainer = table.querySelector('.resizer-container');
+        if (!resizerContainer) return;
+
+        const headers = Array.from(table.querySelectorAll('thead th, thead td'));
+        const resizers = resizerContainer.querySelectorAll('.table-resizer');
+
+        headers.forEach((header, index) => {
+            if (index >= headers.length - 1) return;
+
+            const resizer = resizers[index];
+            if (!resizer) return;
+
+            const headerRect = header.getBoundingClientRect();
+            const tableRect = table.getBoundingClientRect();
+            const leftPosition = (headerRect.right - tableRect.left) - 5;
+            resizer.style.left = leftPosition + 'px';
+        });
     });
 }
 
