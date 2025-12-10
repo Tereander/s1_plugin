@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SimpleOne Color Plugin",
   "version": "1.8.1",
-  "description": "Позволяет кастомизировать S1 и его отдельные элементы",
+  "description": "Позволяет кастомизировать S1 и его отдельные элементы. By Terekhov",
   "permissions": [
     "storage",
     "activeTab",
