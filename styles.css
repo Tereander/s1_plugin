@@ -6,7 +6,7 @@
   width: 6px;
   cursor: col-resize;
   z-index: 10;
-  background: rgba(0, 0, 0, 0); /* Прозрачный фон */
+  background: rgba(0, 0, 0, 0);
   transition: background 0.2s;
 }
 
@@ -114,9 +114,8 @@
   background-color: #da190b;
 }
 
-/* --- НОВОЕ: Стили для чекбокса настроек --- */
+/* --- Стили для чекбокса настроек --- */
 #autoRefreshToggle {
-  /* Сбрасываем все возможные стили, которые могут скрывать или изменять чекбокс */
   appearance: checkbox !important; /* Пытаемся вернуть стандартный вид */
   -webkit-appearance: checkbox !important;
   -moz-appearance: checkbox !important;
