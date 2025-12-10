@@ -1,10 +1,22 @@
-// content.js
+// content.js - ОБЪЕДИНЕННЫЙ ФАЙЛ ДЛЯ ВСЕХ ФУНКЦИЙ
 
-// --- Константы ---
+// === КОНСТАНТЫ ===
 const DATA_ENHANCED_COLOR = 'data-enhanced-color';
 const DATA_ENHANCED_RESIZE = 'data-enhanced-resize';
 
-// --- Состояния ---
+// Конфигурация для стилизации статусов
+const STATUS_CONFIG = {
+    statuses: [
+    'Отложено', 'Закрыта', 'В работе', 'Выполнено', 'На подтверждении', 'Зарегистрировано',
+    'Назначено', 'Принято', 'Возврат диспетчеру', 'Подготовка отчета', 'Закрыто', 'Авторизация',
+    'Ожидает согласования', 'Подготовка отчета'
+    ],
+    styleFlag: 'data-status-styled',
+    // statusSelector: 'span.src-components-customselect-___styles-module__inputText___J9u6h'
+    statusSelector: 'button.src-components-customselect-___styles-module__input___M2cpK'
+};
+
+// === СОСТОЯНИЯ ===
 let refreshIntervalId = null;
 let currentSettings = {
     enabled: false,
@@ -16,7 +28,154 @@ let isEnhancingTables = false;
 let observerDebounceTimer = null;
 let activityRequests = new Map();
 
-// --- Функции для работы с настройками ---
+// Для стилизации статусов
+let statusCheckCount = 0;
+let statusObserver = null;
+let statusIntervalId = null;
+let lastUrl = window.location.href;
+
+// === ФУНКЦИИ СТИЛИЗАЦИИ СТАТУСОВ ===
+
+function applyStatusStyles() {
+    try {
+        console.log("[StatusStyler] Поиск элементов статусов...");
+
+        const elements = document.querySelectorAll(STATUS_CONFIG.statusSelector);
+
+        if (elements.length === 0) {
+            console.log("[StatusStyler] Элементы не найдены");
+            return false;
+        }
+
+        let styledCount = 0;
+
+        elements.forEach(element => {
+            const text = element.textContent.trim();
+
+            // Проверяем массив статусов
+            for (const status of STATUS_CONFIG.statuses) {
+                if (text === status) {
+                    // Проверяем, не стилизован ли уже
+                    if (element.hasAttribute(STATUS_CONFIG.styleFlag)) {
+                        continue;
+                    }
+
+                    // Применяем стили
+                    element.style.backgroundColor = '#33cbb4';
+                    element.style.border = '1px solid black';
+                    element.style.color = 'white';
+                    element.style.fontWeight = '600';
+
+                    // Сохраняем оригинальные padding если они есть
+                    const computedStyle = window.getComputedStyle(element);
+                    if (!computedStyle.padding || computedStyle.padding === '0px') {
+                        element.style.padding = '2px 8px';
+                    }
+
+                    if (!computedStyle.borderRadius || computedStyle.borderRadius === '0px') {
+                        element.style.borderRadius = '3px';
+                    }
+
+                    element.setAttribute(STATUS_CONFIG.styleFlag, 'true');
+                    styledCount++;
+
+                    console.log(`[StatusStyler] Стилизован: "${text}"`);
+                    break;
+                }
+            }
+        });
+
+        if (styledCount > 0) {
+            console.log(`[StatusStyler] Стилизовано элементов: ${styledCount}`);
+            return true;
+        }
+
+        return false;
+
+    } catch (error) {
+        console.error("[StatusStyler] Ошибка:", error);
+        return false;
+    }
+}
+
+function startStatusStyling() {
+    console.log("[StatusStyler] Запуск стилизации статусов...");
+    statusCheckCount = 0;
+
+    // Первая попытка
+    const success = applyStatusStyles();
+
+    if (success) {
+        console.log("[StatusStyler] Стилизация успешно применена");
+        return;
+    }
+
+    // Если не нашли элементы, пробуем несколько раз с интервалом
+    statusIntervalId = setInterval(() => {
+        statusCheckCount++;
+
+        if (statusCheckCount >= 10) {
+            console.log("[StatusStyler] Достигнут лимит проверок, остановка");
+            clearInterval(statusIntervalId);
+            return;
+        }
+
+        console.log(`[StatusStyler] Повторная проверка #${statusCheckCount}`);
+
+        if (applyStatusStyles()) {
+            clearInterval(statusIntervalId);
+            console.log("[StatusStyler] Элементы найдены и стилизованы");
+        }
+
+    }, 2000);
+}
+
+function stopStatusStyling() {
+    if (statusIntervalId) {
+        clearInterval(statusIntervalId);
+        statusIntervalId = null;
+    }
+
+    if (statusObserver) {
+        statusObserver.disconnect();
+        statusObserver = null;
+    }
+
+    console.log("[StatusStyler] Стилизация статусов остановлена");
+}
+
+function setupStatusObserver() {
+    statusObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                // Проверяем есть ли в новых элементах наши статусы
+                let hasRelevantChanges = false;
+
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType === 1) { // Element node
+                        if (node.querySelector && node.querySelector(STATUS_CONFIG.statusSelector)) {
+                            hasRelevantChanges = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasRelevantChanges) {
+                    console.log("[StatusStyler] Обнаружены новые элементы DOM");
+                    setTimeout(applyStatusStyles, 300);
+                }
+            }
+        }
+    });
+
+    statusObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// === ФУНКЦИИ ДЛЯ СПИСКА ЗАЯВОК ===
+
 function loadSettings() {
     return new Promise((resolve) => {
         chrome.storage.sync.get(['autoRefreshEnabled', 'autoRefreshInterval'], (result) => {
@@ -47,7 +206,6 @@ function toggleAutoRefresh() {
     }
 }
 
-// --- Панель истории ---
 function addHistoryPanel() {
     if (document.getElementById('history-panel')) return;
 
@@ -163,7 +321,6 @@ function addHistoryPanel() {
     });
 }
 
-// --- Извлечение данных из таблицы ---
 function extractTaskDataFromRow(clickedButton) {
     let currentRow = clickedButton.closest('tr[data-test="table-row"]');
     if (!currentRow) {
@@ -209,7 +366,6 @@ function extractTaskDataFromRow(clickedButton) {
     return html || '<div>Нет данных для отображения</div>';
 }
 
-// --- Получение активности ---
 async function fetchActivityFromUrlNew(url) {
     return new Promise((resolve, reject) => {
         console.log('[Activity] Отправка запроса на извлечение активности:', url);
@@ -255,7 +411,7 @@ async function fetchActivityFromUrlNew(url) {
             }
         });
 
-        // СОКРАЩАЕМ ТАЙМАУТ до 20 секунд (вместо 45)
+        // Таймаут 20 секунд
         setTimeout(() => {
             if (activityRequests.has(requestId)) {
                 console.log('[Activity] Таймаут ожидания активности (20с)');
@@ -263,12 +419,15 @@ async function fetchActivityFromUrlNew(url) {
                 activityRequests.delete(requestId);
                 reject(new Error('Таймаут загрузки активности'));
             }
-        }, 20000); // 20 секунд
+        }, 20000);
     });
 }
 
-// --- Показ активности ---
 async function showActivity(url, clickedButton) {
+    console.log('[Activity] === НАЧАЛО ЗАГРУЗКИ АКТИВНОСТИ ===');
+    console.log('[Activity] URL:', url);
+    console.log('[Activity] Кнопка:', clickedButton);
+
     if (!historyPanel) addHistoryPanel();
 
     if (!originalBodyStyle) {
@@ -292,10 +451,17 @@ async function showActivity(url, clickedButton) {
     document.getElementById('activity-content').innerHTML = '<div style="padding:10px;text-align:center;">Загрузка...</div>';
 
     try {
+        console.log('[Activity] Запуск fetchActivityFromUrlNew...');
+        const startTime = Date.now();
         const activityHTML = await fetchActivityFromUrlNew(url);
+        const endTime = Date.now();
 
-        // Быстрая вставка
+        console.log('[Activity] Данные получены за', endTime - startTime, 'мс');
+        console.log('[Activity] Длина HTML:', activityHTML.length);
+        console.log('[Activity] Первые 500 символов:', activityHTML.substring(0, 500));
+
         document.getElementById('activity-content').innerHTML = activityHTML;
+        console.log('[Activity] Активность загружена и отображена');
 
         // Быстрое добавление стилей
         addFastStyles();
@@ -303,12 +469,17 @@ async function showActivity(url, clickedButton) {
         console.log('[Activity] Активность загружена');
 
     } catch (error) {
-        console.error('[Activity] Ошибка:', error);
+        console.error('[Activity] ПОЛНАЯ ОШИБКА:', error);
+        console.error('[Activity] Stack:', error.stack);
+
         document.getElementById('activity-content').innerHTML =
             `<div style="padding:15px;background:#ffebee;color:#c62828;">
-                ${error.message}
+                <strong>Ошибка:</strong> ${error.message}<br>
+                <small>${error.stack}</small>
             </div>`;
     }
+
+    console.log('[Activity] === КОНЕЦ ЗАГРУЗКИ АКТИВНОСТИ ===');
 }
 
 function addFastStyles() {
@@ -326,7 +497,6 @@ function addFastStyles() {
     }
 }
 
-// Добавление стилей для активности
 function addActivityStyles() {
     const styleId = 'activity-panel-styles';
 
@@ -402,7 +572,6 @@ function addActivityStyles() {
     document.head.appendChild(style);
 }
 
-// --- Столбец активности ---
 function addHistoryColumn(table) {
     if (table.querySelector('.history-column-header')) return;
 
@@ -474,7 +643,6 @@ function addHistoryColumn(table) {
     });
 }
 
-// --- Раскраска SLA ---
 function colorDueDateRows() {
     const tables = document.querySelectorAll('table');
     const now = new Date();
@@ -487,7 +655,8 @@ function colorDueDateRows() {
         headerCells.forEach((th, index) => {
             const text = th.textContent.trim();
             if (text === 'Плановая дата/время окончания' ||
-                text === 'Плановая дата/время окончания в BMC') {
+                text === 'Плановая дата/время окончания в BMC' ||
+                text === 'Плановая дата/время окончания для ПБ') {
                 targetIndex = index;
             }
         });
@@ -531,7 +700,6 @@ function colorDueDateRows() {
     });
 }
 
-// --- Ресайзеры таблиц с правильным отображением текста ---
 function makeTableResizable(table) {
     if (table.hasAttribute(DATA_ENHANCED_RESIZE)) {
         return;
@@ -607,7 +775,6 @@ function makeTableResizable(table) {
     }
 }
 
-// Оптимизация отображения ячеек
 function optimizeTableCells(table) {
     const allCells = table.querySelectorAll('th, td');
     allCells.forEach(cell => {
@@ -709,7 +876,6 @@ function setupResizerHandlers(resizer, header, headers, index, table) {
     });
 }
 
-// Обновление видимости текста при ресайзе
 function updateCellTextVisibility(cells) {
     cells.forEach(cell => {
         // Для узких колонок - обрезаем текст
@@ -755,7 +921,6 @@ function updateAllResizerPositions(table) {
     });
 }
 
-// --- Обновление позиций ресайзеров (ДОБАВЬТЕ ЭТУ ФУНКЦИЮ ПЕРЕД enhanceAllTables) ---
 function updateResizerPositions() {
     document.querySelectorAll('table[data-enhanced-resize="true"]').forEach(table => {
         const resizerContainer = table.querySelector('.resizer-container');
@@ -778,13 +943,11 @@ function updateResizerPositions() {
     });
 }
 
-// --- Сброс флагов ---
 function resetEnhancedFlags() {
     document.querySelectorAll(`[${DATA_ENHANCED_COLOR}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_COLOR));
     document.querySelectorAll(`[${DATA_ENHANCED_RESIZE}]`).forEach(el => el.removeAttribute(DATA_ENHANCED_RESIZE));
 }
 
-// --- Дебаунс функция ---
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -797,7 +960,6 @@ function debounce(func, wait) {
     };
 }
 
-// --- Обработка всех таблиц ---
 function enhanceAllTables() {
     if (isEnhancingTables) {
         return;
@@ -824,7 +986,139 @@ function enhanceAllTables() {
 
 const debouncedEnhanceAllTables = debounce(enhanceAllTables, 500);
 
-// --- MutationObserver ---
+// === SPA-ОТСЛЕЖИВАНИЕ ПЕРЕХОДОВ ===
+
+function checkUrlChange() {
+    const currentUrl = window.location.href;
+
+    if (currentUrl !== lastUrl) {
+        console.log(`[URL Tracker] URL изменился: ${lastUrl} -> ${currentUrl}`);
+        lastUrl = currentUrl;
+
+        // Определяем тип страницы и запускаем нужные функции
+        handlePageChange(currentUrl);
+    }
+}
+
+function setupSPATracking() {
+    // 1. Периодическая проверка URL
+    const urlCheckInterval = setInterval(checkUrlChange, 1000);
+
+    // 2. События истории браузера
+    window.addEventListener('popstate', checkUrlChange);
+
+    // 3. Перехват pushState/replaceState
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function(...args) {
+        const result = originalPushState.apply(this, args);
+        setTimeout(checkUrlChange, 100);
+        return result;
+    };
+
+    history.replaceState = function(...args) {
+        const result = originalReplaceState.apply(this, args);
+        setTimeout(checkUrlChange, 100);
+        return result;
+    };
+
+    // 4. Отслеживание кликов по ссылкам
+    document.addEventListener('click', (e) => {
+        let target = e.target;
+
+        // Ищем ближайшую ссылку
+        while (target && target.tagName !== 'A' && target !== document.body) {
+            target = target.parentElement;
+        }
+
+        if (target && target.tagName === 'A' && target.href) {
+            setTimeout(checkUrlChange, 300);
+        }
+    }, true);
+
+    // Очистка при уходе со страницы
+    window.addEventListener('beforeunload', () => {
+        clearInterval(urlCheckInterval);
+        stopStatusStyling();
+    });
+
+    console.log("[SPA Tracker] Отслеживание запущено");
+}
+
+// === ОСНОВНАЯ ЛОГИКА ОБРАБОТКИ СТРАНИЦ ===
+
+function handlePageChange(url) {
+    // Останавливаем все предыдущие процессы
+    stopStatusStyling();
+
+    // Сбрасываем флаги таблиц
+    resetEnhancedFlags();
+
+    // Определяем тип страницы и запускаем нужные функции
+    if (url.includes('/record/')) {
+        // Страница заявки - только стилизация статусов
+        console.log('[Page] Страница заявки - запускаем стилизацию статусов');
+        setTimeout(() => {
+            startStatusStyling();
+            setupStatusObserver();
+        }, 500);
+    } else if (url.includes('/list/')) {
+        // Страница списка - все функции кроме стилизации статусов
+        console.log('[Page] Страница списка - запускаем основные функции');
+        setTimeout(() => {
+            initListFunctions();
+        }, 500);
+    } else {
+        console.log('[Page] Неизвестный тип страницы, базовая инициализация');
+        setTimeout(initBaseFunctions, 500);
+    }
+}
+
+async function initListFunctions() {
+    console.log("[List] Инициализация функций для списка...");
+
+    await loadSettings();
+    toggleAutoRefresh();
+    enhanceAllTables();
+}
+
+function initBaseFunctions() {
+    console.log("[Base] Базовая инициализация...");
+
+    // Инициализация SPA отслеживания
+    setupSPATracking();
+
+    // Проверяем текущую страницу при загрузке
+    setTimeout(() => {
+        handlePageChange(window.location.href);
+    }, 100);
+}
+
+// В конец content.js добавь:
+// Функция для ручного тестирования
+function testActivityExtraction(url) {
+  console.log('[TEST] Начинаю тест извлечения активности:', url);
+
+  const testButton = document.createElement('button');
+  testButton.textContent = 'ТЕСТ';
+  testButton.style.cssText = 'position:fixed;top:10px;right:10px;z-index:99999;padding:10px;background:red;color:white;';
+
+  testButton.addEventListener('click', async () => {
+    console.log('[TEST] Клик по тестовой кнопке');
+    await showActivity(url, testButton);
+  });
+
+  document.body.appendChild(testButton);
+  console.log('[TEST] Тестовая кнопка добавлена');
+}
+
+// Для отладки в консоли
+window.testActivity = testActivityExtraction;
+console.log('[TEST] Для тестирования используй: testActivity("URL_заявки")');
+
+// === ИНИЦИАЛИЗАЦИЯ MUTATION OBSERVER ===
+
 const observer = new MutationObserver((mutationsList) => {
     if (isEnhancingTables) return;
 
@@ -874,13 +1168,10 @@ const observer = new MutationObserver((mutationsList) => {
     }
 });
 
-// --- Инициализация ---
-async function init() {
-    console.log("[Main] Инициализация...");
+// === ГЛАВНАЯ ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ ===
 
-    await loadSettings();
-    toggleAutoRefresh();
-    enhanceAllTables();
+async function init() {
+    console.log("[Main] Инициализация плагина...");
 
     // Настройка observer
     observer.observe(document.body, {
@@ -894,6 +1185,14 @@ async function init() {
     window.addEventListener('resize', () => {
         setTimeout(updateResizerPositions, 100);
     });
+
+    // Запускаем SPA отслеживание
+    setupSPATracking();
+
+    // Инициализируем функции для текущей страницы
+    setTimeout(() => {
+        handlePageChange(window.location.href);
+    }, 100);
 }
 
 // Запуск
@@ -902,3 +1201,14 @@ if (document.readyState === 'loading') {
 } else {
     init();
 }
+
+// Экспортируем для отладки
+window.simpleOnePlugin = {
+    applyStatusStyles: applyStatusStyles,
+    startStatusStyling: startStatusStyling,
+    stopStatusStyling: stopStatusStyling,
+    enhanceAllTables: enhanceAllTables,
+    config: STATUS_CONFIG
+};
+
+// ТУТ ЕСЛИ ЧТО СТОП!!!

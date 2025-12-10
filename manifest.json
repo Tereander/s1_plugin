@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "SimpleOne Plugin by Terekhov",
-  "version": "1.7.2",
+  "name": "SimpleOne Color Plugin",
+  "version": "1.8.1",
   "description": "Позволяет кастомизировать S1 и его отдельные элементы",
   "permissions": [
     "storage",
@@ -21,19 +21,9 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://sd.jet.su/list/*"],
-      "js": ["content.js"],
+      "matches": ["https://sd.jet.su/*"],
+      "js": ["content.js", "activity_fetcher.js"],
       "css": ["styles.css"],
-      "run_at": "document_end"
-    },
-    {
-      "matches": ["https://sd.jet.su/record/*"],
-      "js": ["activity_fetcher.js"],
-      "run_at": "document_end"
-    },
-    {
-      "matches": ["https://sd.jet.su/record/itsm_infosys_task/*", "https://sd.jet.su/record/itsm_infosys_order/*"],
-      "js": ["deferred-styler.js"],
       "run_at": "document_end"
     }
   ],
@@ -45,7 +35,7 @@
   ],
   "icons": {
     "16": "icon/icon16.png",
-    "48": "icon/icon48.png",
+    "64": "icon/icon64.png",
     "128": "icon/icon128.png"
   }
 }

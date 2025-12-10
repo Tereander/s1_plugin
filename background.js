@@ -1,4 +1,3 @@
-// background.js - БЫСТРАЯ ВЕРСИЯ
 console.log("[Background] Service worker запущен");
 
 let activityDataCache = new Map();
@@ -12,10 +11,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const requestId = request.requestId || Date.now();
     activityDataCache.set(requestId, {
       sourceTabId: sender.tab.id,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      status: "fetching"
     });
 
-    // Сразу создаем вкладку без задержек
     chrome.tabs.create({
       url: request.url,
       active: false
@@ -25,23 +24,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const cachedData = activityDataCache.get(requestId);
       if (cachedData) {
         cachedData.fetchTabId = newTab.id;
+        cachedData.status = "tab_created";
         activityDataCache.set(requestId, cachedData);
       }
 
-      // Сразу отвечаем что вкладка создана
       sendResponse({ success: true, requestId: requestId });
 
-      // НЕ ЖДЕМ 5 секунд! Отправляем запрос сразу
-      // Слушаем когда вкладка будет готова
+      // Ждем загрузки страницы
       const onTabReady = (tabId, changeInfo) => {
         if (tabId === newTab.id && changeInfo.status === 'complete') {
-          console.log("[Background] Вкладка загружена, отправляю запрос на извлечение");
+          console.log("[Background] Вкладка загружена, ждем 3 секунды для динамического контента");
           chrome.tabs.onUpdated.removeListener(onTabReady);
 
-          // Ждем всего 500мс для динамического контента (вместо 5000мс!)
+          // Даем время на загрузку динамического контента
           setTimeout(() => {
+            console.log("[Background] Отправляю запрос на извлечение активности");
             sendExtractRequest(requestId, newTab.id);
-          }, 500);
+          }, 3000); // 3 секунды для AJAX
         }
       };
 
@@ -52,17 +51,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.tabs.onUpdated.removeListener(onTabReady);
         setTimeout(() => {
           sendExtractRequest(requestId, newTab.id);
-        }, 500);
+        }, 3000);
       }
 
-      // Таймаут на случай проблем - сокращаем до 15 секунд
+      // Таймаут 45 секунд
       setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(onTabReady);
         if (activityDataCache.has(requestId)) {
-          console.log("[Background] Таймаут 15 секунд");
-          cleanupRequest(requestId, newTab.id);
+          const data = activityDataCache.get(requestId);
+          if (data.status !== "completed") {
+            console.log("[Background] Таймаут 45 секунд, закрываю вкладку");
+            cleanupRequest(requestId, newTab.id, "Таймаут загрузки");
+          }
         }
-      }, 15000);
+      }, 45000);
 
     }).catch((error) => {
       console.error("[Background] Ошибка при создании вкладки:", error);
@@ -73,10 +74,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === "extractedActivity") {
+  // ПРИНИМАЕМ ТОЛЬКО activityDataReceived (как в content.js ожидается)
+  if (request.action === "activityDataReceived") {
     console.log("[Background] Получены данные активности, длина:", request.html?.length);
 
-    // Находим запрос
     let foundRequestId = null;
     for (const [requestId, data] of activityDataCache.entries()) {
       if (data.fetchTabId === sender.tab.id) {
@@ -87,24 +88,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (foundRequestId) {
       const requestData = activityDataCache.get(foundRequestId);
+      requestData.status = "completed";
 
-      // Сразу закрываем вкладку
-      chrome.tabs.remove(sender.tab.id).catch(() => {});
+      console.log("[Background] Данные получены, отправляю обратно в исходную вкладку");
 
-      // Сразу отправляем данные обратно
-      if (requestData && requestData.sourceTabId) {
-        console.log("[Background] Отправляю данные обратно в таб:", requestData.sourceTabId);
-
+      // СНАЧАЛА отправляем данные обратно, ПОТОМ закрываем вкладку
+      if (requestData.sourceTabId) {
         chrome.tabs.sendMessage(requestData.sourceTabId, {
-          action: "activityDataReceived",
+          action: "activityDataReceived",  // Это то, что ждет content.js
           html: request.html,
           requestId: foundRequestId
+        }).then(() => {
+          console.log("[Background] Данные отправлены, закрываю вкладку источника");
+          // Закрываем вкладку источника ТОЛЬКО ПОСЛЕ успешной отправки
+          chrome.tabs.remove(sender.tab.id).catch(() => {
+            console.log("[Background] Вкладка уже закрыта");
+          });
         }).catch(error => {
           console.error("[Background] Ошибка отправки данных:", error);
+          // Все равно закрываем вкладку
+          chrome.tabs.remove(sender.tab.id).catch(() => {});
         });
+      } else {
+        // Если нет sourceTabId, просто закрываем
+        chrome.tabs.remove(sender.tab.id).catch(() => {});
       }
 
-      activityDataCache.delete(foundRequestId);
+      // Удаляем из кэша
+      setTimeout(() => {
+        activityDataCache.delete(foundRequestId);
+      }, 1000);
     }
 
     sendResponse({ success: true });
@@ -117,6 +130,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function sendExtractRequest(requestId, tabId) {
   console.log(`[Background] Отправляю запрос на извлечение вкладке ${tabId}`);
 
+  const cachedData = activityDataCache.get(requestId);
+  if (cachedData) {
+    cachedData.status = "extracting";
+    activityDataCache.set(requestId, cachedData);
+  }
+
   chrome.tabs.sendMessage(tabId, {
     action: "extractActivity",
     requestId: requestId
@@ -125,32 +144,42 @@ function sendExtractRequest(requestId, tabId) {
   }).catch(error => {
     console.error(`[Background] Ошибка отправки вкладке ${tabId}:`, error);
 
-    // Быстрая повторная попытка через 200мс
+    // Повторная попытка через 2 секунды
     setTimeout(() => {
       chrome.tabs.sendMessage(tabId, {
         action: "extractActivity",
         requestId: requestId
       }).catch(retryError => {
         console.error(`[Background] Повторная ошибка:`, retryError);
-        cleanupRequest(requestId, tabId);
+        cleanupRequest(requestId, tabId, "Не удалось отправить запрос");
       });
-    }, 200);
+    }, 2000);
   });
 }
 
-function cleanupRequest(requestId, tabId = null) {
+function cleanupRequest(requestId, tabId = null, reason = "Ошибка") {
   const cachedRequest = activityDataCache.get(requestId);
   if (cachedRequest) {
+    console.log(`[Background] Очистка запроса ${requestId}: ${reason}`);
+
+    // Закрываем вкладку если она еще открыта
     if (tabId) {
-      chrome.tabs.remove(tabId).catch(() => {});
+      chrome.tabs.remove(tabId).catch(() => {
+        console.log(`[Background] Вкладка ${tabId} уже закрыта`);
+      });
     }
 
+    // Отправляем сообщение об ошибке в исходную вкладку
     if (cachedRequest.sourceTabId) {
       chrome.tabs.sendMessage(cachedRequest.sourceTabId, {
         action: "activityDataReceived",
-        html: "<div>Таймаут загрузки активности</div>",
+        html: `<div style="padding:20px;color:#666;background:#fff3e0;">
+                <strong>Информация:</strong> ${reason}
+              </div>`,
         requestId: requestId
-      }).catch(() => {});
+      }).catch(() => {
+        console.log(`[Background] Не удалось отправить сообщение об ошибке`);
+      });
     }
 
     activityDataCache.delete(requestId);
@@ -161,8 +190,8 @@ function cleanupRequest(requestId, tabId = null) {
 setInterval(() => {
   const now = Date.now();
   for (const [requestId, data] of activityDataCache.entries()) {
-    if (now - data.timestamp > 30000) { // 30 секунд
-      cleanupRequest(requestId, data.fetchTabId);
+    if (now - data.timestamp > 120000) { // 2 минуты
+      cleanupRequest(requestId, data.fetchTabId, "Очень долгий таймаут");
     }
   }
-}, 10000);
+}, 30000);
