@@ -656,6 +656,7 @@ function colorDueDateRows() {
             const text = th.textContent.trim();
             if (text === 'Плановая дата/время окончания' ||
                 text === 'Плановая дата/время окончания в BMC' ||
+                text === 'Согласованное время окончания' ||
                 text === 'Плановая дата/время окончания для ПБ') {
                 targetIndex = index;
             }
