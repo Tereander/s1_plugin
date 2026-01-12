@@ -13,7 +13,8 @@
     "https://sd.jet.su/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
   },
   "action": {
     "default_popup": "popup.html",
@@ -37,5 +38,13 @@
     "16": "icon/icon16.png",
     "64": "icon/icon64.png",
     "128": "icon/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ao.terekhov@jet.su",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
   }
 }
