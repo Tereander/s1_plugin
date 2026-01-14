@@ -588,6 +588,7 @@ function addHistoryColumn(table) {
 
     if (numberColumnIndex === -1) return;
 
+    // 1. Добавляем заголовок для столбца Активности
     const historyHeader = document.createElement('th');
     historyHeader.className = 'history-column-header';
     historyHeader.textContent = 'Активность';
@@ -597,6 +598,25 @@ function addHistoryColumn(table) {
     const targetHeader = headers[numberColumnIndex];
     targetHeader.parentNode.insertBefore(historyHeader, targetHeader);
 
+    // 2. Добавляем пустую ячейку в КАЖДУЮ строку поиска
+    const searchRows = table.querySelectorAll('tr.src-components-groupedTable-___styles-module__RowNoHover___SBb4M');
+
+    searchRows.forEach(searchRow => {
+        // Проверяем, есть ли уже наша ячейка
+        if (!searchRow.querySelector('.history-column-search-cell')) {
+            const searchHistoryCell = document.createElement('th');
+            searchHistoryCell.className = 'history-column-search-cell';
+            searchHistoryCell.style.width = '80px';
+            searchHistoryCell.innerHTML = '&nbsp;';
+            searchHistoryCell.style.minWidth = '80px';
+            searchHistoryCell.style.maxWidth = '80px';
+
+            // Просто вставляем в начало строки
+            searchRow.insertBefore(searchHistoryCell, searchRow.firstChild);
+        }
+    });
+
+    // 3. Добавляем кнопки Активности в строки данных
     const rows = table.querySelectorAll('tbody tr[data-test="table-row"]');
     rows.forEach(row => {
         const cells = row.querySelectorAll('td, th');
@@ -643,6 +663,30 @@ function addHistoryColumn(table) {
     });
 }
 
+function fixAllSearchRows() {
+    document.querySelectorAll('table').forEach(table => {
+        // Если в таблице есть наш заголовок Активности
+        if (table.querySelector('.history-column-header')) {
+            // Находим все строки поиска
+            const searchRows = table.querySelectorAll('tr.src-components-groupedTable-___styles-module__RowNoHover___SBb4M');
+
+            searchRows.forEach(searchRow => {
+                // Если еще нет нашей ячейки поиска
+                if (!searchRow.querySelector('.history-column-search-cell')) {
+                    const searchHistoryCell = document.createElement('th');
+                    searchHistoryCell.className = 'history-column-search-cell';
+                    searchHistoryCell.style.width = '80px';
+                    searchHistoryCell.innerHTML = '&nbsp;';
+                    searchHistoryCell.style.minWidth = '80px';
+                    searchHistoryCell.style.maxWidth = '80px';
+
+                    // Вставляем в начало
+                    searchRow.insertBefore(searchHistoryCell, searchRow.firstChild);
+                }
+            });
+        }
+    });
+}
 function colorDueDateRows() {
     const tables = document.querySelectorAll('table');
     const now = new Date();
@@ -977,6 +1021,8 @@ function enhanceAllTables() {
             makeTableResizable(table);
         });
 
+        // Исправляем строки поиска
+        setTimeout(fixAllSearchRows, 100);
         setTimeout(updateResizerPositions, 100);
     } finally {
         setTimeout(() => {
@@ -1135,16 +1181,15 @@ const observer = new MutationObserver((mutationsList) => {
         if (mutation.type === 'childList') {
             for (let node of mutation.addedNodes) {
                 if (node.nodeType === 1) {
-                    if (node.tagName === 'TABLE' ||
-                        (node.querySelector && node.querySelector('table'))) {
+                    // Проверяем, не добавилась ли строка поиска
+                    if (node.classList && node.classList.contains('src-components-groupedTable-___styles-module__RowNoHover___SBb4M')) {
+                        console.log("[Main] Обнаружена новая строка поиска");
+                        setTimeout(fixAllSearchRows, 100);
                         shouldUpdate = true;
                         break;
                     }
-                }
-            }
 
-            for (let node of mutation.removedNodes) {
-                if (node.nodeType === 1) {
+                    // Или если это таблица
                     if (node.tagName === 'TABLE' ||
                         (node.querySelector && node.querySelector('table'))) {
                         shouldUpdate = true;
@@ -1153,8 +1198,6 @@ const observer = new MutationObserver((mutationsList) => {
                 }
             }
         }
-
-        if (shouldUpdate) break;
     }
 
     if (shouldUpdate) {
